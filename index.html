@@ -1798,13 +1798,125 @@ function AnalysisTab({filtered,yoyData,yoyYears,heatmapData,getHeatColor,slippag
   const tt={background:t.card,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12};
   const vel=useMemo(()=>{const m={};filtered.forEach(r=>{if(!m[r.Employee])m[r.Employee]={name:r.Employee,total:0,months:new Set()};m[r.Employee].total+=r._amount;m[r.Employee].months.add(`${r._year}-${r.Month}`);});return Object.values(m).map(e=>({name:e.name,vel:e.months.size?e.total/(e.months.size*22):0})).sort((a,b)=>b.vel-a.vel).slice(0,10);},[filtered]);
   const sSum=useMemo(()=>{const m={};slippage.forEach(s=>{if(!m[s.exec])m[s.exec]={name:s.exec,proj:0,act:0};m[s.exec].proj+=s.projected;m[s.exec].act+=s.actual;});return Object.values(m).map(e=>({...e,p:e.proj?pct(e.act,e.proj):0})).sort((a,b)=>a.p-b.p);},[slippage]);
+
+  // ── Unbilled customers (no transaction in last 16 months) ─────────────────
+  const[unbilledSearch,setUnbilledSearch]=useState('');
+  const unbilled=useMemo(()=>{
+    if(!filtered||!filtered.length)return[];
+    const now=new Date();
+    const cutoffYear=now.getFullYear();
+    const cutoffMonth=now.getMonth()+1;
+    let cy=cutoffYear,cm=cutoffMonth-16;
+    while(cm<=0){cm+=12;cy--;}
+    const lastSeen={};
+    filtered.forEach(r=>{
+      const cust=(r.Customer||'').trim();if(!cust)return;
+      const yr=r._year;const mo=MONTHS.indexOf(r.Month)+1;
+      if(!yr||mo<1)return;
+      const score=yr*100+mo;
+      if(!lastSeen[cust]||score>lastSeen[cust].score){
+        lastSeen[cust]={score,year:yr,month:r.Month,moNum:mo,
+          lastAmt:r._amount,employee:r.Employee||'',branch:r.Branch||'',team:r.Team||''};
+      }
+    });
+    const totalSpend={};
+    filtered.forEach(r=>{const c=(r.Customer||'').trim();if(c)totalSpend[c]=(totalSpend[c]||0)+r._amount;});
+    const cutoffScore=cy*100+cm;
+    return Object.entries(lastSeen)
+      .filter(([,v])=>v.score<cutoffScore)
+      .map(([name,v])=>({name,lastYear:v.year,lastMonth:v.month,lastSeen:`${v.month} ${v.year}`,
+        monthsAgo:Math.round(((cutoffYear*100+cutoffMonth)-(v.year*100+v.moNum))*0.97),
+        totalSpend:totalSpend[name]||0,employee:v.employee,branch:v.branch,team:v.team}))
+      .sort((a,b)=>b.totalSpend-a.totalSpend);
+  },[filtered]);
+
+  const unbilledFiltered=useMemo(()=>{
+    if(!unbilledSearch.trim())return unbilled;
+    const q=unbilledSearch.toLowerCase();
+    return unbilled.filter(c=>c.name.toLowerCase().includes(q)||c.employee.toLowerCase().includes(q)||c.branch.toLowerCase().includes(q));
+  },[unbilled,unbilledSearch]);
+
+  const exportUnbilledCSV=()=>{
+    const headers=['#','Customer','Last Seen','Historical Spend (AED)','Last Employee','Branch','Team'];
+    const rows=unbilledFiltered.map((c,i)=>[i+1,c.name,c.lastSeen,c.totalSpend.toFixed(2),c.employee||'',c.branch||'',c.team||'']);
+    const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`unbilled_customers_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  };
+
+  const unbilledAiPrompt=useMemo(()=>{
+    if(!unbilled.length)return'';
+    const top10=unbilled.slice(0,10).map(c=>`${c.name} (last seen: ${c.lastSeen}, total spend: AED ${fmt(c.totalSpend)}, handled by: ${c.employee||'unknown'})`).join('\n');
+    const totalLostValue=unbilled.reduce((s,c)=>s+c.totalSpend,0);
+    return `You are a sales retention analyst. We have ${unbilled.length} customers who have not been billed in the last 16 months.\nTotal historical value of these dormant customers: AED ${fmt(totalLostValue)}\nTop 10 dormant customers by historical spend:\n${top10}\n\nProvide 4-5 concise, actionable bullet-point insights for management:\n- Which customers to prioritise for re-engagement and why\n- Patterns you notice (employee, branch, or timing)\n- Risk to the business\n- Recommended next steps`;
+  },[unbilled]);
+
   return(<div>
     <ChartCard title="Year-on-Year Comparison" chartId="yoy_comparison" data={yoyData} keys={yoyYears.map((y,i)=>({key:y,name:y,color:YCOL[i%YCOL.length]}))} nameKey="month" height={220} defaultType="line" t={t} style={{marginBottom:14}}/>
     <Card title="Seasonality Heatmap" t={t} style={{marginBottom:14}}><div style={{overflowX:'auto'}}><table style={{borderCollapse:'separate',borderSpacing:3}}><thead><tr><th style={{fontSize:11,color:t.muted,paddingRight:10,paddingBottom:6,textAlign:'left'}}>Year</th>{MONTHS.map(m=><th key={m} style={{fontSize:10,color:t.muted,fontWeight:500,textAlign:'center',minWidth:50,paddingBottom:6}}>{m}</th>)}</tr></thead><tbody>{heatmapData.map((row,i)=>(<tr key={i}><td style={{fontSize:12,fontWeight:600,color:t.text,paddingRight:10}}>{row.year}</td>{MONTHS.map(m=>{const v=row[m]||0;return(<td key={m} title={`AED ${fmt(v)}`}><div style={{background:getHeatColor(v),borderRadius:4,padding:'5px 3px',textAlign:'center',fontSize:9,fontFamily:"'DM Mono',monospace",color:v>0?(dark?'#e2e8f0':'#1e293b'):t.muted,minWidth:48}}>{v>0?`${(v/1000).toFixed(0)}K`:''}</div></td>);})}  </tr>))}</tbody></table></div></Card>
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
       <Card title="Collection Velocity (AED/working day)" t={t}>{vel.map((e,i)=>(<div key={i} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>{e.name}</span><span style={{fontSize:11,color:t.muted}}>AED {fmt(e.vel)}/day</span></div><MiniBar value={e.vel} max={(vel[0]&&vel[0].vel)||1} color={COLORS[i%COLORS.length]} t={t}/></div>))}</Card>
       <Card title="Slippage: Projection vs Actual" t={t}><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr>{['Executive','Projected','Actual','Attainment'].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead><tbody>{sSum.slice(0,10).map((s,i)=>(<tr key={i}><TD t={t}>{s.name}</TD><TD t={t} mono>{fmt(s.proj)}</TD><TD t={t} mono>{fmt(s.act)}</TD><TD t={t}><Badge text={`${s.p.toFixed(0)}%`} type={s.p>=100?'green':s.p>=75?'amber':'red'}/></TD></tr>))}</tbody></table></div></Card>
     </div>
+
+    {/* ── Unbilled Customers ─────────────────────────────────────────────── */}
+    <Card title="Unbilled Customers — Last 16 Months" t={t} style={{marginBottom:14}}
+      action={<Btn t={t} onClick={exportUnbilledCSV} style={{fontSize:11,padding:'4px 10px'}}>⬇ Export CSV</Btn>}>
+      {/* KPI row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:14}}>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Dormant Customers</div>
+          <div style={{fontSize:26,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.danger}}>{fmt(unbilled.length)}</div>
+          <div style={{fontSize:11,color:t.muted,marginTop:3}}>No billing in 16+ months</div>
+        </div>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Historical Value at Risk</div>
+          <div style={{fontSize:22,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.warning}}>AED {fmt(unbilled.reduce((s,c)=>s+c.totalSpend,0))}</div>
+          <div style={{fontSize:11,color:t.muted,marginTop:3}}>Cumulative past spend</div>
+        </div>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Avg Historical Spend</div>
+          <div style={{fontSize:22,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>AED {fmt(unbilled.length?unbilled.reduce((s,c)=>s+c.totalSpend,0)/unbilled.length:0)}</div>
+          <div style={{fontSize:11,color:t.muted,marginTop:3}}>Per dormant customer</div>
+        </div>
+      </div>
+      {/* Search */}
+      <input value={unbilledSearch} onChange={e=>setUnbilledSearch(e.target.value)}
+        placeholder="Search by customer, employee or branch…"
+        style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'7px 12px',fontSize:13,color:t.text,width:'100%',marginBottom:10}}/>
+      {/* Table */}
+      {unbilled.length>0?(
+        <div style={{overflowX:'auto',maxHeight:360,border:`1px solid ${t.border}`,borderRadius:8}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead style={{position:'sticky',top:0,background:t.card,zIndex:2}}>
+              <tr>
+                <TH t={t}>#</TH>
+                <TH t={t}>Customer</TH>
+                <TH t={t}>Last Seen</TH>
+                <TH t={t} right>Historical Spend</TH>
+                <TH t={t}>Last Employee</TH>
+                <TH t={t}>Branch</TH>
+              </tr>
+            </thead>
+            <tbody>
+              {unbilledFiltered.map((c,i)=>(
+                <tr key={i} style={{background:i%2===0?'transparent':t.surface,borderBottom:`1px solid ${t.border}`}}>
+                  <TD t={t} color={t.muted}>{i+1}</TD>
+                  <TD t={t} bold>{c.name}</TD>
+                  <TD t={t}><Badge text={c.lastSeen} type="amber"/></TD>
+                  <TD t={t} mono right color={t.warning}>AED {fmt(c.totalSpend)}</TD>
+                  <TD t={t} color={t.muted}>{c.employee||'—'}</TD>
+                  <TD t={t} color={t.muted}>{c.branch||'—'}</TD>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ):<div style={{textAlign:'center',padding:24,color:t.muted,fontSize:13}}>No unbilled customers found — all customers have recent activity.</div>}
+      {unbilledFiltered.length<unbilled.length&&<div style={{fontSize:11,color:t.muted,marginTop:6}}>Showing {unbilledFiltered.length} of {unbilled.length} results</div>}
+    </Card>
+    <AIInsights prompt={unbilledAiPrompt} t={t} label="AI Dormant Customer Insights"/>
   </div>);
 }
 
