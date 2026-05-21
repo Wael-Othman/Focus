@@ -1,0 +1,2491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Focus Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6' opacity='.15'/%3E%3Crect x='5' y='18' width='5' height='9' rx='2' fill='%233b82f6'/%3E%3Crect x='13' y='12' width='5' height='15' rx='2' fill='%233b82f6'/%3E%3Crect x='21' y='6' width='5' height='21' rx='2' fill='%233b82f6'/%3E%3Cpath d='M7.5 15 L15.5 9 L23.5 3' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' opacity='.6'/%3E%3Ccircle cx='23.5' cy='3' r='2.5' fill='%233b82f6'/%3E%3C/svg%3E"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.5.0/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;font-family:'DM Sans',sans-serif}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.spin{animation:spin 1s linear infinite;display:inline-block}
+.fadein{animation:fadeIn .3s ease}
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+<script type="text/babel" data-presets="react,env">
+const {useState,useEffect,useCallback,useMemo,useRef} = React;
+const RC=window.Recharts;
+const {AreaChart,Area,BarChart,Bar,LineChart,Line,PieChart,Pie,Cell,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer}=RC;
+
+/* ══════════════════════════════════════════════════════
+   SmartChart  — universal chart wrapper with type switcher
+   chartId   : unique string key (for persisting preference)
+   data      : array of objects
+   keys      : array of {key, name, color} — the data series
+   nameKey   : string — the X-axis / label field (default 'name')
+   height    : number (default 220)
+   fmt       : value formatter function
+   t         : theme
+   Supported types: bar | barH | line | area | pie | donut | funnel
+══════════════════════════════════════════════════════ */
+const CHART_PREFS_KEY = 'ciq_chart_prefs';
+function loadChartPrefs(){try{return JSON.parse(localStorage.getItem(CHART_PREFS_KEY)||'{}');}catch(_e){return{};}}
+function saveChartPref(id,type){try{const p=loadChartPrefs();p[id]=type;localStorage.setItem(CHART_PREFS_KEY,JSON.stringify(p));}catch(_e){}}
+
+const CHART_TYPES=[
+  {id:'bar',    label:'Bar',       icon:'▬'},
+  {id:'barH',   label:'Horiz.',    icon:'⬛'},
+  {id:'line',   label:'Line',      icon:'📈'},
+  {id:'area',   label:'Area',      icon:'⛰'},
+  {id:'pie',    label:'Pie',       icon:'🥧'},
+  {id:'donut',  label:'Donut',     icon:'🍩'},
+  {id:'funnel', label:'Funnel',    icon:'🔻'},
+];
+
+function SmartChart({chartId, data=[], keys=[], nameKey='name', height=220, valFmt, t, defaultType='bar'}){
+  const prefs = loadChartPrefs();
+  const [type, setType] = useState(prefs[chartId] || defaultType);
+
+  const changeType = (tp) => {
+    setType(tp);
+    saveChartPref(chartId, tp);
+  };
+
+  const tt = {background:t.card, border:`1px solid ${t.border}`, borderRadius:8, fontSize:12};
+  const vf = valFmt || (v=>`AED ${fmt(v)}`);
+
+  // Normalise: if keys is empty, auto-detect from first data row minus nameKey
+  const series = keys.length ? keys : Object.keys(data[0]||{}).filter(k=>k!==nameKey).map((k,i)=>({key:k,name:k,color:COLORS[i%COLORS.length]}));
+
+  // Funnel: sorted descending bars with width proportion
+  const renderFunnel = () => {
+    const _sk=series[0]&&series[0].key?series[0].key:'value';const sorted=[...data].sort((a,b)=>(b[_sk]||0)-(a[_sk]||0));
+    const max=(sorted[0]&&sorted[0][_sk])||1;
+    return(
+      <div style={{padding:'8px 0'}}>
+        {sorted.map((row,i)=>{
+          const val=row[_sk]||0;
+          const w = Math.max(20, pct(val,max));
+          return(
+            <div key={i} style={{marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3}}>
+                <span style={{color:t.text,fontWeight:500}}>{row[nameKey]}</span>
+                <span style={{color:t.muted,fontFamily:"'DM Mono',monospace"}}>{vf(val)}</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'center'}}>
+                <div style={{width:`${w}%`,height:24,background:(series[0]&&series[0].color)||t.accent,borderRadius:4,transition:'width .4s',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#fff',fontWeight:600,minWidth:4}}>
+                  {w>25?fmtP(w):''}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderPieOrDonut = (donut=false) => {
+    const pieData = series.length===1
+      ? data.map(d=>({name:d[nameKey],value:d[series[0].key]||0,color:COLORS[data.indexOf(d)%COLORS.length]}))
+      : series.map(s=>({name:s.name,value:data.reduce((sum,d)=>sum+(d[s.key]||0),0),color:s.color}));
+    return(
+      <div>
+        <ResponsiveContainer width="100%" height={height-40}>
+          <PieChart>
+            <Pie data={pieData.filter(d=>d.value>0)} cx="50%" cy="50%"
+              innerRadius={donut?Math.round(height*0.18):0}
+              outerRadius={Math.round(height*0.32)}
+              dataKey="value" paddingAngle={donut?3:1}
+              label={({name,percent})=>`${name.length>10?name.slice(0,10)+'…':name} ${(percent*100).toFixed(0)}%`}
+              labelLine={true}>
+              {pieData.map((d,i)=><Cell key={i} fill={d.color}/>)}
+            </Pie>
+            <Tooltip formatter={v=>[vf(v)]} contentStyle={tt}/>
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginTop:4}}>
+          {pieData.filter(d=>d.value>0).map((d,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:4,fontSize:11}}>
+              <div style={{width:8,height:8,borderRadius:2,background:d.color,flexShrink:0}}/>
+              <span style={{color:t.muted}}>{d.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderBar = (horizontal=false) => (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} layout={horizontal?'vertical':'horizontal'}>
+        <CartesianGrid strokeDasharray="3 3" stroke={t.border} horizontal={!horizontal} vertical={horizontal}/>
+        {horizontal
+          ? <><XAxis type="number" tick={{fontSize:9,fill:t.muted}} tickFormatter={v=>`${(v/1000).toFixed(0)}K`}/><YAxis type="category" dataKey={nameKey} tick={{fontSize:10,fill:t.muted}} width={110}/></>
+          : <><XAxis dataKey={nameKey} tick={{fontSize:10,fill:t.muted}}/><YAxis tick={{fontSize:10,fill:t.muted}} tickFormatter={v=>`${(v/1000).toFixed(0)}K`}/></>
+        }
+        <Tooltip formatter={(v,n)=>[vf(v),n]} contentStyle={tt}/>
+        {series.length>1&&<Legend wrapperStyle={{fontSize:11}}/>}
+        {series.map((s,i)=>(
+          <Bar key={s.key} dataKey={s.key} name={s.name} stackId={series.length>1?'a':undefined}
+            fill={s.color} radius={i===series.length-1?(horizontal?[0,4,4,0]:[4,4,0,0]):[0,0,0,0]}>
+            {series.length===1&&data.map((_,j)=><Cell key={j} fill={COLORS[j%COLORS.length]}/>)}
+          </Bar>
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  const renderLine = () => (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={t.border}/>
+        <XAxis dataKey={nameKey} tick={{fontSize:10,fill:t.muted}}/>
+        <YAxis tick={{fontSize:10,fill:t.muted}} tickFormatter={v=>`${(v/1000).toFixed(0)}K`}/>
+        <Tooltip formatter={(v,n)=>[vf(v),n]} contentStyle={tt}/>
+        {series.length>1&&<Legend wrapperStyle={{fontSize:11}}/>}
+        {series.map((s,i)=>(
+          <Line key={s.key} type="monotone" dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={2} dot={false}/>
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+
+  const renderArea = () => (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data}>
+        <defs>
+          {series.map((s,i)=>(
+            <linearGradient key={s.key} id={`sc_${chartId}_${i}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={s.color} stopOpacity={0.3}/>
+              <stop offset="95%" stopColor={s.color} stopOpacity={0}/>
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke={t.border}/>
+        <XAxis dataKey={nameKey} tick={{fontSize:10,fill:t.muted}}/>
+        <YAxis tick={{fontSize:10,fill:t.muted}} tickFormatter={v=>`${(v/1000).toFixed(0)}K`}/>
+        <Tooltip formatter={(v,n)=>[vf(v),n]} contentStyle={tt}/>
+        {series.length>1&&<Legend wrapperStyle={{fontSize:11}}/>}
+        {series.map((s,i)=>(
+          <Area key={s.key} type="monotone" dataKey={s.key} name={s.name}
+            stroke={s.color} fill={`url(#sc_${chartId}_${i})`} strokeWidth={2}/>
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+
+  return(
+    <div>
+      {/* Type picker */}
+      <div style={{display:'flex',gap:4,marginBottom:10,flexWrap:'wrap'}}>
+        {CHART_TYPES.map(ct=>(
+          <button key={ct.id} onClick={()=>changeType(ct.id)}
+            title={ct.label}
+            style={{background:type===ct.id?t.accent:t.surface,color:type===ct.id?'#fff':t.muted,
+              border:`1px solid ${type===ct.id?t.accent:t.border}`,borderRadius:6,
+              padding:'3px 8px',fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif",
+              display:'flex',alignItems:'center',gap:4,transition:'all .15s'}}>
+            <span>{ct.icon}</span><span>{ct.label}</span>
+          </button>
+        ))}
+      </div>
+      {/* Chart */}
+      {type==='bar'    && renderBar(false)}
+      {type==='barH'   && renderBar(true)}
+      {type==='line'   && renderLine()}
+      {type==='area'   && renderArea()}
+      {type==='pie'    && renderPieOrDonut(false)}
+      {type==='donut'  && renderPieOrDonut(true)}
+      {type==='funnel' && renderFunnel()}
+    </div>
+  );
+}
+
+/* ── SmartCard: Card with SmartChart inside ── */
+function ChartCard({title, chartId, data, keys, nameKey='name', height=220, defaultType='bar', valFmt, t, style={}}){
+  return(
+    <Card title={title} t={t} style={style}>
+      <SmartChart chartId={chartId} data={data} keys={keys} nameKey={nameKey}
+        height={height} defaultType={defaultType} valFmt={valFmt} t={t}/>
+    </Card>
+  );
+}
+
+/* ── IndexedDB ── */
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('collectiq_v2',1);r.onupgradeneeded=e=>e.target.result.createObjectStore('kv');r.onsuccess=e=>res(e.target.result);r.onerror=rej;});}
+async function dbSet(k,v){const db=await openDB();return new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=res;tx.onerror=rej;});}
+async function dbGet(k){const db=await openDB();return new Promise((res,rej)=>{const r=db.transaction('kv','readonly').objectStore('kv').get(k);r.onsuccess=e=>res(e.target.result);r.onerror=rej;});}
+async function dbDel(k){const db=await openDB();return new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=res;tx.onerror=rej;});}
+
+/* ── Simple hash for password ── */
+async function hashPwd(pwd){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pwd));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+
+/* ── CSV ── */
+function parseCSV(text){if(!text||!text.trim())return[];const lines=text.trim().split(/\r?\n/);if(lines.length<2)return[];const rawHeaders=parseCSVLine(lines[0]).map(h=>h.trim());
+// Deduplicate headers: second occurrence becomes "Header_2", third "Header_3" etc.
+const headerCount={};const headers=rawHeaders.map(h=>{headerCount[h]=(headerCount[h]||0)+1;return headerCount[h]>1?h+'_'+headerCount[h]:h;});
+return lines.slice(1).map(l=>{const vals=parseCSVLine(l);const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]||'').trim();});return obj;}).filter(r=>Object.values(r).some(v=>v!==''));}
+function parseCSVLine(line){const res=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){inQ=!inQ;continue;}if(c===','&&!inQ){res.push(cur);cur='';continue;}cur+=c;}res.push(cur);return res;}
+function parseAmt(v){if(!v||v==='-'||v==='')return 0;const n=parseFloat(v.replace(/[",\s$]/g,''));return isNaN(n)?0:n;}
+function parseYear(yy){if(!yy)return null;const m=yy.match(/(\d{4})/);return m?parseInt(m[1]):null;}
+function fmt(n,d=0){if(n===null||n===undefined||isNaN(n))return'0';return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function pct(a,b){return b?(a/b)*100:0;}
+function fmtP(n,d=1){return fmt(n,d)+'%';}
+
+/* ── Constants ── */
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const Q_MONTHS={Q1:['Jan','Feb','Mar'],Q2:['Apr','May','Jun'],Q3:['Jul','Aug','Sep'],Q4:['Oct','Nov','Dec']};
+const Q_WEIGHTS={Q1:0.25,Q2:0.20,Q3:0.20,Q4:0.35};
+const HIGH_CONF=new Set(['Assured New Sales','Assured Sales','Balance Amount to Work on','Assured AMC Revenue','SaaS renewal']);
+const LOW_CONF=new Set(['Unassured Sales','Unassured AMC Revenue']);
+const SHEET_LABELS=['Historic Collections','Current Year Collections','Projections','Employees & Roles','Renewal Contracts (Support)'];
+const COLORS=['#3b82f6','#f43f5e','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#ef4444','#84cc16','#6366f1'];
+const DEFAULT_NS_STREAMS=[
+  'Existing business - New License - SaaS In Premise',
+  'New business - In Premise',
+  'New Business - In Premise',
+  'New Business - SaaS In Premise',
+  'Services'
+];
+const DEFAULT_RN_STREAMS=[
+  'AMC',
+  'Existing Business - New -SaaS Annually',
+  'Existing business - upgrade-SaaS annually',
+  'New Business-SaaS Annually',
+  'New Business-SaaS 2 Years In Cloud'
+];
+const RENEWAL_STREAMS_LOWER=DEFAULT_RN_STREAMS.map(s=>s.toLowerCase().trim());
+const isRenewalStream=(stream)=>{const s=(stream||'').toLowerCase().trim();return RENEWAL_STREAMS_LOWER.some(r=>s===r)||s.startsWith('amc');};
+const DEFAULT_CREDIT = {name:'Credit: Wael Othman', email:'Wael@focussoftnet.ae'};
+const CREDIT_PWD_HASH = '72d1b5da6eeaf1789df86487da50ad5e9dadb5ffaecb56b6de592aa286c9c1b8';
+
+const THEMES={
+  light:{bg:'#f1f5f9',card:'#ffffff',border:'#e2e8f0',text:'#0f172a',muted:'#64748b',accent:'#3b82f6',success:'#10b981',warning:'#f59e0b',danger:'#ef4444',surface:'#f8fafc'},
+  dark:{bg:'#0f172a',card:'#1e293b',border:'#334155',text:'#f1f5f9',muted:'#94a3b8',accent:'#60a5fa',success:'#34d399',warning:'#fbbf24',danger:'#f87171',surface:'#0f172a'}
+};
+
+
+/* ── Sheet 4 Helpers ──
+   Sheet 4 now has: Name, Role, Team, Branch, Region, "Reporting to"
+   Same person can appear in multiple rows (multiple branches).
+   We build a rich org structure from it dynamically.
+── */
+function buildOrg(s4){
+  // Filter out empty rows (no Name AND no Branch with actual content)
+  const valid = s4.filter(r => r.Name && r.Name.trim());
+  // Deduplicate people: key = Name (person), collect all branches/teams/regions
+  const people = {};
+  valid.forEach(r => {
+    const name = r.Name.trim();
+    if(!people[name]) people[name] = {name, role:r.Role||'', teams:[], branches:[], regions:[], reportingTo:r['Reporting to']||r.ReportingTo||''};
+    if(r.Team && !people[name].teams.includes(r.Team)) people[name].teams.push(r.Team);
+    if(r.Branch && !people[name].branches.includes(r.Branch)) people[name].branches.push(r.Branch);
+    if(r.Region && !people[name].regions.includes(r.Region)) people[name].regions.push(r.Region);
+  });
+  return {valid, people, list: Object.values(people)};
+}
+function isManager(role){
+  const r=(role||'').toLowerCase().trim();
+  return r.includes('manager')||r==='higher manager'||r==='regional manager'||r==='team manager'||r.includes('head');
+}
+function isExecutive(role){
+  const r=(role||'').toLowerCase().trim();
+  return r!==''&&!isManager(role)&&!r.includes('ceo')&&!r.includes('director');
+}
+// Commission role category
+function commRole(role){
+  const r=(role||'').toLowerCase().trim();
+  if(r.includes('support head')) return 'support_head';
+  if(r.includes('support incharge')||r.includes('support in-charge')) return 'support_incharge';
+  if(r==='regional manager'||r.includes('regional sales head')||r.includes('rsm')) return 'regional_head';
+  if(r==='team manager'||r==='higher manager'||r.includes('sales manager')||r.includes('manager')) return 'sales_manager';
+  if(r.includes('sales consultant')||r.includes('consultant')) return 'sales_consultant';
+  if(r.includes('executive')) return 'executive';
+  return 'unknown';
+}
+function getPersonInfo(s4, name){
+  // Returns merged info for a person across all their rows
+  const rows = s4.filter(r=>r.Name&&r.Name.trim()===name.trim());
+  if(!rows.length) return {};
+  return {
+    Name: name,
+    Role: rows[0].Role||'',
+    Team: rows.map(r=>r.Team).filter(Boolean).join(', '),
+    Branch: rows.map(r=>r.Branch).filter(Boolean).join(', '),
+    Region: rows.map(r=>r.Region).filter(Boolean).join(', '),
+    ReportingTo: rows[0]['Reporting to']||rows[0].ReportingTo||'',
+    rows
+  };
+}
+
+/* ── Shared UI ── */
+function KPI({label,value,sub,t,ac}){return(<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'16px 20px'}}><div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:8}}>{label}</div><div style={{fontSize:22,fontWeight:700,color:ac||t.text,fontFamily:"'DM Mono',monospace"}}>{value}</div>{sub&&<div style={{fontSize:12,color:t.muted,marginTop:4}}>{sub}</div>}</div>);}
+function Card({children,title,t,style={},action}){return(<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'18px 20px',...style}}>{title&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}><div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.7px'}}>{title}</div>{action}</div>}{children}</div>);}
+function Badge({text,type='blue'}){const m={blue:{bg:'#dbeafe',c:'#1e40af'},green:{bg:'#d1fae5',c:'#065f46'},amber:{bg:'#fef3c7',c:'#92400e'},red:{bg:'#fee2e2',c:'#991b1b'},purple:{bg:'#ede9fe',c:'#5b21b6'},gray:{bg:'#f1f5f9',c:'#475569'}};const col=m[type]||m.blue;return <span style={{display:'inline-block',fontSize:11,padding:'2px 9px',borderRadius:20,fontWeight:600,background:col.bg,color:col.c,whiteSpace:'nowrap'}}>{text}</span>;}
+function MiniBar({value,max,color='#3b82f6',t}){return(<div style={{background:t.surface,borderRadius:4,height:5,flex:1}}><div style={{height:5,borderRadius:4,background:color,width:`${Math.min(100,pct(value,max||1))}%`,transition:'width .3s'}}/></div>);}
+function Chip({label,active,onClick,t}){return(<span onClick={onClick} style={{display:'inline-block',fontSize:11,padding:'3px 9px',borderRadius:6,margin:2,cursor:'pointer',border:`1px solid ${active?t.accent:t.border}`,background:active?t.accent:t.surface,color:active?'#fff':t.muted,transition:'all .15s'}}>{label}</span>);}
+function FG({label,children,t}){const[o,sO]=useState(true);return(<div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:10,padding:'12px 14px',marginBottom:10}}><div onClick={()=>sO(x=>!x)} style={{display:'flex',justifyContent:'space-between',cursor:'pointer',fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:o?8:0}}>{label}<span>{o?'▾':'▸'}</span></div>{o&&<div>{children}</div>}</div>);}
+function Btn({children,onClick,primary,t,disabled,style={}}){return(<button onClick={onClick} disabled={disabled} style={{background:primary?t.accent:t.surface,color:primary?'#fff':t.text,border:`1px solid ${primary?t.accent:t.border}`,borderRadius:8,padding:'7px 14px',fontSize:13,fontWeight:600,cursor:disabled?'not-allowed':'pointer',opacity:disabled?0.5:1,fontFamily:"'DM Sans',sans-serif",...style}}>{children}</button>);}
+function TH({children,t,right}){return <th style={{textAlign:right?'right':'left',padding:'8px 10px',borderBottom:`1px solid ${t.border}`,fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.5px',whiteSpace:'nowrap'}}>{children}</th>;}
+function TD({children,t,mono,color,right,bold,style={}}){return <td style={{padding:'7px 10px',borderBottom:`1px solid ${t.border}`,fontFamily:mono?"'DM Mono',monospace":undefined,fontSize:mono?12:13,color:color||t.text,textAlign:right?'right':'left',fontWeight:bold?700:400,...style}}>{children}</td>;}
+function Inp({value,onChange,placeholder,t,style={},type='text'}){return <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:t.text,fontFamily:"'DM Sans',sans-serif",width:'100%',...style}}/>;}
+function Sel({value,onChange,options,t,style={}}){return <select value={value} onChange={onChange} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'7px 10px',fontSize:13,color:t.text,fontFamily:"'DM Sans',sans-serif",...style}}>{options.map(([v,l])=><option key={v} value={v}>{l||v}</option>)}</select>;}
+
+/* ── AI Insights (calls Anthropic API) ── */
+function AIInsights({prompt,t,label='AI Insights'}){
+  const[text,setText]=useState('');const[loading,setLoading]=useState(false);const[done,setDone]=useState(false);
+  const run=async()=>{
+    setLoading(true);setText('');setDone(false);
+    // Use Pollinations.ai text API — free, no API key needed, works from browser
+    try{
+      const encoded=encodeURIComponent(prompt);
+      const res=await fetch(`https://text.pollinations.ai/${encoded}`,{method:'GET'});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const txt=await res.text();
+      setText(txt.trim());setDone(true);
+    }catch(e){
+      // Fallback: try openrouter free tier
+      try{
+        const res2=await fetch('https://openrouter.ai/api/v1/chat/completions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','HTTP-Referer':'https://collectiq.local','X-Title':'CollectIQ'},
+          body:JSON.stringify({model:'mistralai/mistral-7b-instruct:free',messages:[{role:'user',content:prompt}]})
+        });
+        const d=await res2.json();
+        const txt2=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||'No response received';
+        setText(txt2.trim());setDone(true);
+      }catch(e2){
+        setText('AI insights unavailable — check internet connection and try again.\n\nError: '+e2.message);
+        setDone(true);
+      }
+    }
+    setLoading(false);
+  };
+  return(<div style={{marginTop:16,background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,overflow:'hidden'}}>
+    <div style={{padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:done||loading?`1px solid ${t.border}`:'none'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:16}}>✨</span><span style={{fontSize:12,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>{label}</span><span style={{fontSize:10,color:t.muted,background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:'1px 5px'}}>Free AI</span></div>
+      {!done&&<Btn t={t} primary onClick={run} disabled={loading} style={{padding:'5px 12px',fontSize:12}}>{loading?<span className="spin">⟳</span>:'Generate'}</Btn>}
+      {done&&<Btn t={t} onClick={run} style={{padding:'5px 12px',fontSize:12}}>↻ Refresh</Btn>}
+    </div>
+    {(loading||done)&&<div style={{padding:'14px 16px',fontSize:13,lineHeight:1.8,color:t.text,whiteSpace:'pre-wrap'}} className={done?'fadein':''}>{loading?<div style={{display:'flex',alignItems:'center',gap:8,color:t.muted}}><span className="spin">⟳</span> Generating insights...</div>:text}</div>}
+  </div>);
+}
+
+/* ── Password Gate ── */
+function PasswordGate({t,onUnlock}){
+  const[pwd,setPwd]=useState('');const[err,setErr]=useState('');
+  const check=async()=>{
+    const h=await hashPwd(pwd);
+    const stored=await dbGet('pwd_hash');
+    if(!stored){await dbSet('pwd_hash',h);onUnlock();}
+    else if(h===stored){onUnlock();}
+    else{setErr('Incorrect password');setPwd('');}
+  };
+  return(<div style={{minHeight:'100vh',background:t.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
+    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:16,padding:40,width:360,textAlign:'center'}}>
+      <div style={{fontSize:40,marginBottom:16}}>🔐</div>
+      <div style={{fontSize:20,fontWeight:700,color:t.text,marginBottom:8}}>Focus Dashboard</div>
+      <div style={{fontSize:13,color:t.muted,marginBottom:24}}>Enter your password to continue</div>
+      <Inp value={pwd} onChange={e=>{setPwd(e.target.value);setErr('');}} placeholder="Password" t={t} type="password" style={{marginBottom:12,textAlign:'center'}}/>
+      {err&&<div style={{fontSize:12,color:t.danger,marginBottom:10}}>{err}</div>}
+      <Btn primary t={t} onClick={check} style={{width:'100%',padding:'10px',fontSize:14}}>Unlock</Btn>
+      <div style={{fontSize:11,color:t.muted,marginTop:16}}>First time? Any password you enter becomes the master password.</div>
+    </div>
+  </div>);
+}
+
+/* ── Tab Password Gate ── */
+function TabPasswordGate({t,tabName,onUnlock}){
+  const[pwd,setPwd]=useState('');const[err,setErr]=useState('');
+  const check=async()=>{
+    const h=await hashPwd(pwd);
+    const stored=await dbGet('pwd_hash');
+    if(h===stored){onUnlock();}
+    else{setErr('Incorrect password');setPwd('');}
+  };
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:340,gap:0}}>
+      <div style={{background:t.card,border:'1px solid '+t.border,borderRadius:16,padding:'40px 48px',textAlign:'center',maxWidth:360,width:'100%',boxShadow:'0 4px 24px rgba(0,0,0,0.08)'}}>
+        <div style={{fontSize:36,marginBottom:12}}>🔒</div>
+        <div style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:6}}>{tabName}</div>
+        <div style={{fontSize:13,color:t.muted,marginBottom:24}}>This tab is password protected</div>
+        <input type="password" value={pwd} onChange={e=>{setPwd(e.target.value);setErr('');}} onKeyDown={e=>e.key==='Enter'&&check()} placeholder="Enter password" style={{width:'100%',boxSizing:'border-box',padding:'10px 14px',borderRadius:8,border:'1px solid '+t.border,background:t.surface,color:t.text,fontSize:14,marginBottom:12,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
+        {err&&<div style={{fontSize:12,color:'#ef4444',marginBottom:10}}>{err}</div>}
+        <button onClick={check} style={{width:'100%',padding:'10px',background:t.accent,color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>Unlock</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Security Tab ── */
+function SecurityTab({t,onLock,credit,onSaveCredit}){
+  const[cur,setCur]=useState('');const[np,setNp]=useState('');const[np2,setNp2]=useState('');const[msg,setMsg]=useState('');const[msgType,setMsgType]=useState('');
+  const m=(txt,tp)=>{setMsg(txt);setMsgType(tp);setTimeout(()=>setMsg(''),3000);};
+  const change=async()=>{
+    if(!cur||!np||!np2){m('Fill all fields','danger');return;}
+    if(np!==np2){m('New passwords do not match','danger');return;}
+    if(np.length<4){m('Password too short (min 4 chars)','danger');return;}
+    const curH=await hashPwd(cur);const stored=await dbGet('pwd_hash');
+    if(stored&&curH!==stored){m('Current password incorrect','danger');return;}
+    await dbSet('pwd_hash',await hashPwd(np));
+    m('Password updated ✓','success');setCur('');setNp('');setNp2('');
+  };
+  const remove=async()=>{
+    if(!cur){m('Enter current password first','danger');return;}
+    const curH=await hashPwd(cur);const stored=await dbGet('pwd_hash');
+    if(stored&&curH!==stored){m('Current password incorrect','danger');return;}
+    await dbDel('pwd_hash');
+    m('Password removed — dashboard is now open','success');setCur('');
+  };
+  return(<div style={{maxWidth:460}}>
+    <Card title="Password Protection" t={t}>
+      <div style={{fontSize:13,color:t.muted,marginBottom:20,lineHeight:1.6}}>Set a password to protect this dashboard. The password hash is stored locally in your browser — it never leaves your device.</div>
+      {[['Current Password',cur,setCur],['New Password',np,setNp],['Confirm New Password',np2,setNp2]].map(([lbl,val,set])=>(
+        <div key={lbl} style={{marginBottom:12}}>
+          <label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:5}}>{lbl}</label>
+          <Inp value={val} onChange={e=>{set(e.target.value);setMsg('');}} placeholder="••••••••" t={t} type="password"/>
+        </div>
+      ))}
+      {msg&&<div style={{fontSize:13,color:t[msgType]||t.text,marginBottom:12,padding:'8px 12px',background:t.surface,borderRadius:6}}>{msg}</div>}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+        <Btn primary t={t} onClick={change}>Update Password</Btn>
+        <Btn t={t} onClick={remove} style={{color:t.danger,borderColor:t.danger}}>Remove Password</Btn>
+        <Btn t={t} onClick={onLock}>🔒 Lock Now</Btn>
+      </div>
+    </Card>
+
+    {/* Credit editor */}
+    <Card title="Credit Label" t={t} style={{marginTop:16}}>
+      <div style={{fontSize:13,color:t.muted,marginBottom:16,lineHeight:1.6}}>
+        Edit the name and email shown in the top bar. Protected by a separate access password.
+      </div>
+      <CreditEditor t={t} credit={credit} onSave={onSaveCredit}/>
+    </Card>
+  </div>);
+}
+
+function CreditEditor({t,credit,onSave}){
+  const[cpwd,setCpwd]=useState('');const[cname,setCname]=useState((credit&&credit.name)||DEFAULT_CREDIT.name);const[cemail,setCemail]=useState((credit&&credit.email)||DEFAULT_CREDIT.email);const[cmsg,setCmsg]=useState('');const[unlocked,setUnlocked]=useState(false);
+  const verify=async()=>{const h=await hashPwd(cpwd);if(h===CREDIT_PWD_HASH){setUnlocked(true);setCmsg('');}else{setCmsg('Incorrect password');}setCpwd('');};
+  const save=async()=>{await onSave({name:cname,email:cemail});setCmsg('Saved ✓');setTimeout(()=>setCmsg(''),2000);};
+  const ii={background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:t.text,width:'100%'};
+  if(!unlocked) return(
+    <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+      <input type="password" value={cpwd} onChange={e=>{setCpwd(e.target.value);setCmsg('');}} placeholder="Enter password to edit" style={{...ii,width:260,flex:'none'}}/>
+      <Btn t={t} primary onClick={verify}>Unlock</Btn>
+      {cmsg&&<span style={{fontSize:12,color:t.danger}}>{cmsg}</span>}
+    </div>
+  );
+  return(
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+        <div><label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:5}}>Display Name</label><input value={cname} onChange={e=>setCname(e.target.value)} style={ii}/></div>
+        <div><label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:5}}>Email</label><input value={cemail} onChange={e=>setCemail(e.target.value)} style={ii}/></div>
+      </div>
+      <div style={{display:'flex',gap:10,alignItems:'center'}}>
+        <Btn primary t={t} onClick={save}>Save Label</Btn>
+        {cmsg&&<span style={{fontSize:12,color:t.success}}>{cmsg}</span>}
+        <Btn t={t} onClick={()=>setUnlocked(false)} style={{marginLeft:'auto',fontSize:11}}>🔒 Re-lock</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ── Settings Tab ── */
+function SettingsTab({sheets,sheetMeta,onFileUpload,onClearSheet,t}){
+  const[drag,setDrag]=useState(null);
+  const SC=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899'];const ICONS=['📋','💰','🔭','👥'];
+  const counts=['s1','s2','s3','s4','s5'].map(k=>sheets[k].length);
+  const allLoaded=counts.slice(0,4).every(c=>c>0);const totalRows=counts.reduce((a,b)=>a+b,0);
+  const drop=(k,e)=>{e.preventDefault();setDrag(null);const f=e.dataTransfer.files[0];if(f)onFileUpload(k,f);};
+  return(<div style={{maxWidth:860}}>
+    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',gap:16}}>
+      <div style={{fontSize:28,flexShrink:0}}>💾</div>
+      <div><div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:6}}>Data saved in your browser</div>
+      <div style={{fontSize:13,color:t.muted,lineHeight:1.7}}>CSVs are stored in your browser — they persist across sessions. Re-upload only when data changes.<br/><strong style={{color:t.text}}>Export from Google Sheets:</strong> File → Download → Comma-separated values (.csv)</div></div>
+    </div>
+    {totalRows>0&&<div style={{background:allLoaded?'#d1fae5':'#fef3c7',border:`1px solid ${allLoaded?'#6ee7b7':'#fcd34d'}`,borderRadius:10,padding:'10px 16px',marginBottom:16,fontSize:13,color:allLoaded?'#065f46':'#92400e',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <span>{allLoaded?'✅ All 4 sheets loaded!':`⚠️ ${counts.filter(c=>c>0).length}/4 sheets loaded`}</span>
+      <span style={{fontFamily:"'DM Mono',monospace",fontWeight:600}}>{totalRows.toLocaleString()} rows</span>
+    </div>}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      {['s1','s2','s3','s4','s5'].map((k,i)=>{const has=counts[i]>0;const meta=sheetMeta[k];return(
+        <div key={k} onDragOver={e=>{e.preventDefault();setDrag(k);}} onDragLeave={()=>setDrag(null)} onDrop={e=>drop(k,e)}
+          style={{border:`2px dashed ${drag===k?SC[i]:has?SC[i]:t.border}`,borderRadius:14,padding:'24px 20px',textAlign:'center',background:drag===k?SC[i]+'22':has?SC[i]+'11':'transparent',transition:'all .2s',position:'relative'}}>
+          {has&&<button onClick={()=>onClearSheet(k)} style={{position:'absolute',top:10,right:10,background:'transparent',border:'none',cursor:'pointer',fontSize:15,color:t.muted,padding:4}}>✕</button>}
+          <div style={{fontSize:34,marginBottom:8}}>{has?'✅':ICONS[i]}</div>
+          <div style={{fontWeight:700,fontSize:13,color:has?SC[i]:t.text,marginBottom:3}}>Sheet {i+1}</div>
+          <div style={{fontSize:12,color:t.muted,marginBottom:12}}>{SHEET_LABELS[i]}</div>
+          {has?(<div><div style={{fontSize:13,fontWeight:600,color:SC[i],fontFamily:"'DM Mono',monospace",marginBottom:4}}>{counts[i].toLocaleString()} rows</div>
+            {meta&&<div style={{fontSize:11,color:t.muted,marginBottom:10}}>{meta}</div>}
+            <label style={{display:'inline-block',background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'5px 12px',fontSize:12,cursor:'pointer',color:t.muted}}>↻ Replace<input type="file" accept=".csv" style={{display:'none'}} onChange={e=>onFileUpload(k,e.target.files[0])}/></label>
+          </div>):(<label style={{display:'inline-block',background:SC[i],color:'#fff',borderRadius:8,padding:'8px 18px',fontSize:13,fontWeight:600,cursor:'pointer'}}>⬆ Choose CSV<input type="file" accept=".csv" style={{display:'none'}} onChange={e=>onFileUpload(k,e.target.files[0])}/></label>)}
+          <div style={{fontSize:11,color:t.muted,marginTop:8}}>or drag &amp; drop</div>
+        </div>);})}
+    </div>
+    <div style={{marginTop:20,background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'14px 18px'}}>
+      <div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:10}}>Danger Zone</div>
+      <Btn t={t} onClick={()=>{if(window.confirm('Clear ALL sheet data?')){['s1','s2','s3','s4','s5'].forEach(k=>onClearSheet(k));}}} style={{color:t.danger,borderColor:t.danger}}>🗑 Clear All Sheets</Btn>
+    </div>
+    <GoogleSheetsTester t={t}/>
+  </div>);
+}
+
+function GoogleSheetsTester({t}){
+  const[url,setUrl]=useState('');
+  const[status,setStatus]=useState(null);
+  const PROXIES=[
+    {name:'Direct',fn:u=>u},
+    {name:'allorigins.win',fn:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
+    {name:'corsproxy.io',fn:u=>`https://corsproxy.io/?${encodeURIComponent(u)}`},
+    {name:'cors-anywhere (herokuapp)',fn:u=>`https://cors-anywhere.herokuapp.com/${u}`},
+  ];
+  const test=async()=>{
+    if(!url.trim()){setStatus({ok:false,error:'Please enter a URL'});return;}
+    setStatus('loading');
+    for(const proxy of PROXIES){
+      try{
+        const fetchUrl=proxy.fn(url.trim());
+        const res=await fetch(fetchUrl,{signal:AbortSignal.timeout(8000)});
+        if(!res.ok)continue;
+        const text=await res.text();
+        if(!text.trim()||text.trim().startsWith('<'))continue;
+        const lines=text.trim().split(/\r?\n/);
+        const headers=lines[0].split(',').map(h=>h.replace(/"/g,'').trim());
+        const preview=lines.slice(1,4).map(l=>l.substring(0,120));
+        setStatus({ok:true,proxy:proxy.name,rows:lines.length-1,cols:headers.length,headers,preview});
+        return;
+      }catch(e){continue;}
+    }
+    setStatus({ok:false,error:'All methods failed (Direct + 3 proxies). Google Sheet must be published publicly: File → Share → Publish to web → CSV. If already done, try opening the URL directly in a browser tab first.'});
+  };
+  return(
+    <div style={{marginTop:20,background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'16px 18px'}}>
+      <div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:4}}>Google Sheets URL Tester</div>
+      <div style={{fontSize:12,color:t.muted,marginBottom:12,lineHeight:1.6}}>
+        To get a URL: open Google Sheet → <strong style={{color:t.text}}>File → Share → Publish to web</strong> → select the sheet tab → choose <strong style={{color:t.text}}>CSV</strong> → Publish → copy the link.
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:12}}>
+        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=...&single=true&output=csv" style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid '+t.border,background:t.surface,color:t.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
+        <button onClick={test} disabled={status==='loading'} style={{padding:'8px 18px',background:t.accent,color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif"}}>
+          {status==='loading'?'Testing...':'🔗 Test URL'}
+        </button>
+      </div>
+      {status&&status!=='loading'&&(
+        <div style={{borderRadius:8,padding:'12px 14px',background:status.ok?'#d1fae522':'#fee2e222',border:`1px solid ${status.ok?'#6ee7b7':'#fca5a5'}`}}>
+          {status.ok?(
+            <div>
+              <div style={{fontWeight:700,color:'#065f46',fontSize:13,marginBottom:6}}>✅ Success via <strong>{status.proxy}</strong></div>
+              <div style={{fontSize:12,color:t.muted,marginBottom:4}}><strong style={{color:t.text}}>{status.rows}</strong> data rows · <strong style={{color:t.text}}>{status.cols}</strong> columns</div>
+              <div style={{fontSize:11,color:t.muted,marginBottom:6}}>Columns: {status.headers.slice(0,8).join(', ')}{status.headers.length>8?` +${status.headers.length-8} more`:''}</div>
+              <div style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:t.muted,background:t.surface,borderRadius:6,padding:'8px 10px',lineHeight:1.6}}>
+                {status.preview.map((l,i)=><div key={i} style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l}</div>)}
+              </div>
+            </div>
+          ):(
+            <div style={{fontSize:12,color:'#b91c1c'}}><strong>❌ Failed:</strong> {status.error}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Targets Tab ── */
+function TargetsTab({sheets,targets,saveTargets,t}){
+  const[year,setYear]=useState(new Date().getFullYear());
+  const[local,setLocal]=useState(targets);
+  const[selBranch,setSelBranch]=useState('');
+  useEffect(()=>setLocal(targets),[targets]);
+  const org=useMemo(()=>buildOrg(sheets.s4),[sheets.s4]);
+  const teams=useMemo(()=>[...new Set(sheets.s4.filter(r=>r.Team).map(r=>r.Team).filter(Boolean))].sort(),[sheets.s4]);
+  const branches=useMemo(()=>[...new Set(sheets.s4.map(r=>r.Branch).filter(Boolean))].sort(),[sheets.s4]);
+  const allExecs=useMemo(()=>org.list.filter(p=>!isManager(p.role)&&p.name).sort((a,b)=>a.name.localeCompare(b.name)),[org]);
+  const execs=useMemo(()=>selBranch?allExecs.filter(p=>(p.branches||[]).includes(selBranch)):allExecs,[allExecs,selBranch]);
+  const setT=(k,v)=>{const u={...local,[k]:v};setLocal(u);saveTargets(u);};
+  const ii={background:t.surface,border:"1px solid "+t.border,borderRadius:6,padding:"6px 10px",fontSize:12,color:t.text,fontFamily:"DM Mono,monospace",width:"100%"};
+  const QTRS=[{q:"Q1",w:25},{q:"Q2",w:20},{q:"Q3",w:20},{q:"Q4",w:35}];
+  return(<div style={{maxWidth:1200}}>
+    <div style={{background:t.card,border:"1px solid "+t.border,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:t.muted}}>
+      <strong style={{color:t.text}}>Import/Export format:</strong> JSON. Keys: target_NAME_YEAR, salary_NAME, team_TEAMNAME_YEAR
+    </div>
+    <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:20,flexWrap:"wrap"}}>
+      <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{...ii,width:110}}>
+        {[2022,2023,2024,2025,2026].map(y=><option key={y} value={y}>{y}</option>)}
+      </select>
+      <select value={selBranch} onChange={e=>setSelBranch(e.target.value)} style={{...ii,width:180}}>
+        <option value="">All Branches</option>
+        {branches.map(b=><option key={b} value={b}>{b}</option>)}
+      </select>
+      {selBranch&&<span style={{fontSize:12,color:t.accent,fontWeight:600}}>{execs.length} employee{execs.length!==1?"s":""}</span>}
+      <span style={{fontSize:13,color:t.muted}}>Q1 25% · Q2 20% · Q3 20% · Q4 35%</span>
+      <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+        <Btn t={t} onClick={()=>{const b=new Blob([JSON.stringify(local,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="targets.json";a.click();}}>⬇ Export</Btn>
+        <label style={{background:t.surface,border:"1px solid "+t.border,borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",color:t.text}}>⬆ Import<input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);saveTargets(d);setLocal(d);}catch(ex){alert("Invalid JSON");}};r.readAsText(f);}}/></label>
+      </div>
+    </div>
+    <Card title={"Team Targets — "+year} t={t} style={{marginBottom:16}}>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>{["Team","Annual Target","Q1","Q2","Q3","Q4"].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead>
+        <tbody>{teams.map(team=>{
+          const k="team_"+team+"_"+year;
+          const v=parseFloat(local[k]||0);
+          const alloc=allExecs.filter(p=>p.teams&&p.teams.includes(team)).reduce((s,p)=>s+parseFloat(local["target_"+p.name+"_"+year]||0),0);
+          const ua=v-alloc;
+          return(<tr key={team}>
+            <TD t={t}><div style={{fontWeight:500}}>{team}</div>{v>0&&<div style={{fontSize:11,color:ua<0?t.danger:t.success}}>Unalloc: AED {fmt(ua)}</div>}</TD>
+            <TD t={t}><input type="number" value={local[k]||""} placeholder="0" onChange={e=>setT(k,e.target.value)} style={ii}/></TD>
+            {QTRS.map(({q,w})=><TD key={q} t={t} mono right>AED {fmt(v*w/100)}</TD>)}
+          </tr>);
+        })}</tbody>
+      </table></div>
+    </Card>
+    <Card title={"Individual Targets — "+year+(selBranch?" · "+selBranch:"")} t={t} style={{marginBottom:16}}>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>{["Executive","Role","Branch","Annual Target","Monthly Salary"].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead>
+        <tbody>{execs.map(p=>{
+          const name=p.name;
+          const info=getPersonInfo(sheets.s4,name);
+          return(<tr key={name}>
+            <TD t={t}><span style={{fontWeight:500}}>{name}</span></TD>
+            <TD t={t}><Badge text={info.Role||"—"} type={isManager(info.Role)?"purple":"green"}/></TD>
+            <TD t={t} color={t.muted}>{info.Branch||"—"}</TD>
+            <TD t={t}><input type="number" placeholder="0" value={local["target_"+name+"_"+year]||""} onChange={e=>setT("target_"+name+"_"+year,e.target.value)} style={ii}/></TD>
+            <TD t={t}><input type="number" placeholder="0" value={local["salary_"+name]||""} onChange={e=>setT("salary_"+name,e.target.value)} style={ii}/></TD>
+          </tr>);
+        })}</tbody>
+      </table></div>
+    </Card>
+    <Card title={"Quarterly Renewal Targets, Spillover and Bonus Eligibility — "+year} t={t} style={{marginBottom:16}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:10,lineHeight:1.6}}>
+        <strong style={{color:t.text}}>Q Renewal Target:</strong> Renewal amount expected this quarter including pending from prior Q.<br/>
+        <strong style={{color:t.text}}>Spillover:</strong> Unmet target from previous Q added to this Q bonus target.<br/>
+        <strong style={{color:t.text}}>Bonus Eligible?</strong> Set No if employee missed bonus last Q (90% slab forfeited next Q, 100% slab reduced to 25%).
+      </div>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr>
+          <TH t={t}>Executive</TH>
+          {QTRS.map(({q})=>[
+            <TH key={q+"r"} t={t}>{q} Renewal Tgt</TH>,
+            <TH key={q+"s"} t={t}>{q} Spillover</TH>,
+            <TH key={q+"b"} t={t}>{q} Bonus?</TH>,
+          ])}
+        </tr></thead>
+        <tbody>{execs.map(p=>{
+          const name=p.name;
+          return(<tr key={name}>
+            <TD t={t} style={{fontWeight:500,whiteSpace:"nowrap",fontSize:12}}>{name}</TD>
+            {QTRS.map(({q})=>[
+              <TD key={q+"r"} t={t}><input type="number" placeholder="0" value={local["renewals_q_"+name+"_"+year+"_"+q]||""} onChange={e=>setT("renewals_q_"+name+"_"+year+"_"+q,e.target.value)} style={{...ii,width:85}}/></TD>,
+              <TD key={q+"s"} t={t}><input type="number" placeholder="0" value={local["spillover_"+name+"_"+year+"_"+q]||""} onChange={e=>setT("spillover_"+name+"_"+year+"_"+q,e.target.value)} style={{...ii,width:85}}/></TD>,
+              <TD key={q+"b"} t={t}>
+                <select value={local["bonus_eligible_"+name+"_"+year+"_"+q]||""} onChange={e=>setT("bonus_eligible_"+name+"_"+year+"_"+q,e.target.value)} style={{...ii,width:75}}>
+                  <option value="">Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </TD>,
+            ])}
+          </tr>);
+        })}</tbody>
+      </table></div>
+    </Card>
+  </div>);
+}
+
+function CommissionTab({sheets,targets,t,dark}){
+  const[sel,setSel]=useState('');
+  const[year,setYear]=useState(new Date().getFullYear());
+  const[qtr,setQtr]=useState('Q1');
+  const[nsAmt,setNsAmt]=useState('');const[rnAmt,setRnAmt]=useState('');
+  const[nsOverride,setNsOverride]=useState(false);const[rnOverride,setRnOverride]=useState(false);
+  const[nsStreams,setNsStreams]=useState(DEFAULT_NS_STREAMS);
+  const[rnStreams,setRnStreams]=useState(DEFAULT_RN_STREAMS);
+  const[showStreamEdit,setShowStreamEdit]=useState(false);
+  const[showCodeEditor,setShowCodeEditor]=useState(false);
+  const curYear=new Date().getFullYear();
+  const ii={background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:t.text,fontFamily:"'DM Sans',sans-serif",width:'100%'};
+
+  const execList=useMemo(()=>{const org=buildOrg(sheets.s4);return org.list.map(p=>p.name).sort();},[sheets.s4]);
+  const info=useMemo(()=>getPersonInfo(sheets.s4,sel),[sel,sheets.s4]);
+  const role=useMemo(()=>(info.Role||'').trim(),[info]);
+  const salary=useMemo(()=>parseFloat(targets[`salary_${sel}`]||0),[targets,sel]);
+
+  // ── Auto-calculate from transactions ─────────────────────────────────────
+  const autoCalc=useMemo(()=>{
+    if(!sel)return{ns:0,rn:0};
+    const qMos=Q_MONTHS[qtr]||[];
+    const srcSheet=year===curYear?sheets.s2:[...sheets.s1,...sheets.s2];
+    const rows=srcSheet.filter(r=>{
+      const ry=parseYear(r.yy||r.Year||r.year);
+      return ry===year&&((r.Employee&&r.Employee.trim()===sel)||(r.Executive&&r.Executive.trim()===sel));
+    });
+    const isSalesConsultant=role.toLowerCase().includes('sales consultant');
+    let ns,rn;
+    if(isSalesConsultant){
+      // All collections into ns regardless of stream; rn forced to zero
+      ns=rows.filter(r=>qMos.includes(r.Month)).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+      rn=0;
+    }else{
+      ns=rows.filter(r=>qMos.includes(r.Month)&&nsStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim())).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+      rn=rows.filter(r=>qMos.includes(r.Month)&&rnStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim())).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+    }
+    return{ns,rn};
+  },[sel,year,qtr,role,sheets.s1,sheets.s2,nsStreams,rnStreams,curYear]);
+
+  const ns=nsOverride?parseFloat(nsAmt)||0:autoCalc.ns;
+  const rn=rnOverride?parseFloat(rnAmt)||0:autoCalc.rn;
+  useEffect(()=>{if(!nsOverride)setNsAmt(autoCalc.ns>0?String(autoCalc.ns):'');},[autoCalc.ns,nsOverride]);
+  useEffect(()=>{if(!rnOverride)setRnAmt(autoCalc.rn>0?String(autoCalc.rn):'');},[autoCalc.rn,rnOverride]);
+  useEffect(()=>{setNsOverride(false);setRnOverride(false);},[sel,year,qtr]);
+
+  // ── Targets ────────────────────────────────────────────────────────────────
+  // Annual target and quarterly distribution
+  const annTarget  = parseFloat(targets[`target_${sel}_${year}`]||0);
+  // Q sales target = (Q% of annual) - Q renewal target
+  const qRenewTgt  = parseFloat(targets[`renewals_q_${sel}_${year}_${qtr}`]||targets[`renewals_${sel}_${year}`]||0);
+  const qTotalTgt  = annTarget*(Q_WEIGHTS[qtr]||0.25);  // full Q target
+  const qSalesTgt  = Math.max(0, qTotalTgt - qRenewTgt); // Q sales target = Q total - Q renewal
+
+  // Percentages
+  const qSalesPct  = qSalesTgt?pct(ns,qSalesTgt):0;   // vs sales-only target
+  const qTotalPct  = qTotalTgt?pct(ns+rn,qTotalTgt):0; // vs total Q target
+  const rnPct      = qRenewTgt?pct(rn,qRenewTgt):0;    // renewals vs Q renewal target
+  const ytdPct     = annTarget?pct(ns+rn,annTarget):0;  // overall YTD
+
+  // ── Commission calculation ─────────────────────────────────────────────────
+  /*COMMISSION_LOGIC_START*/
+  const result=useMemo(()=>{
+    if(!sel)return null;
+    const r=role.toLowerCase();
+    let nc=0,rc=0,nb='Role not configured',rb='Role not configured';
+
+    if(r.includes('support incharge')||r.includes('support in-charge')){
+      /*
+       * SUPPORT INCHARGE - SALES commission (on QTD sales collections)
+       * Sales target for Q = Q total target - Q renewal target
+       * Slabs applied to (ns / qSalesTgt):
+       *   0%+  → 1%  (from first dirham)
+       *  70%+  → 3%  (over all)
+       *  80%+  → 4%  (over all)
+       * 100%+  → 5%  (over all)
+       */
+      if(qSalesTgt>0){
+        if(qSalesPct>=100){nc=ns*0.05;nb='≥100% of sales target → 5% on all sales collected';}
+        else if(qSalesPct>=80){nc=ns*0.04;nb='≥80% of sales target → 4% on all sales collected';}
+        else if(qSalesPct>=70){nc=ns*0.03;nb='≥70% of sales target → 3% on all sales collected';}
+        else{nc=ns*0.01;nb='<70% of sales target → 1% on all sales collected';}
+      }else{nc=ns*0.01;nb='No sales target set — using 1% default';}
+
+      /*
+       * SUPPORT INCHARGE - RENEWALS commission (on QTD renewal collections)
+       * vs (Q renewal target + any pending from previous Q)
+       * Slabs applied to (rn / qRenewTgt):
+       *  70%+  → 2.50%
+       *  80%+  → 2.75%
+       * 100%+  → 3.00%
+       *  <70%  → 0%
+       */
+      if(qRenewTgt>0){
+        if(rnPct>=100){rc=rn*0.03;rb='≥100% of renewal target → 3.00% on renewals';}
+        else if(rnPct>=80){rc=rn*0.0275;rb='≥80% of renewal target → 2.75% on renewals';}
+        else if(rnPct>=70){rc=rn*0.025;rb='≥70% of renewal target → 2.50% on renewals';}
+        else{rc=0;rb='<70% of renewal target → 0% renewals commission';}
+      }else{rb='No Q renewal target set';}
+
+    } else if(r.includes('sales consultant')||r.includes('consultant')){
+      /*
+       * SALES CONSULTANT - SALES commission (on QTD sales collections, new logos only)
+       * Slabs vs Q target (qTotalTgt used since no renewal target for consultants):
+       *   0 → <60%   → 2%  over all
+       *  60 → <75%   → 4%  over all
+       *  75 → <100%  → 6%  over all
+       * 100%+         → 6% on target amount + 10% DIFFERENTIAL on excess above target
+       * No renewals commission.
+       */
+      const pctVsQ=qTotalTgt?pct(ns,qTotalTgt):0;
+      if(pctVsQ>=100){
+        nc=(qTotalTgt*0.06)+((ns-qTotalTgt)*0.10);
+        nb=`≥100%: 6% on AED ${fmt(qTotalTgt)} + 10% differential on AED ${fmt(Math.max(0,ns-qTotalTgt))} excess`;
+      } else if(pctVsQ>=75){nc=ns*0.06;nb='≥75% of Q target → 6% on all collected';}
+      else if(pctVsQ>=60){nc=ns*0.04;nb='≥60% of Q target → 4% on all collected';}
+      else{nc=ns*0.02;nb='<60% of Q target → 2% on all collected';}
+      rc=0;rb='No renewals commission for Sales Consultant';
+
+    } else if(r.includes('support head')){
+      if(qTotalPct>=100){nc=(ns)*0.025;nb='≥100% → 2.50%';}
+      else if(qTotalPct>=80){nc=(ns)*0.02;nb='≥80% → 2.00%';}
+      else if(qTotalPct>=70){nc=(ns)*0.015;nb='≥70% → 1.50%';}
+      else{nc=0;nb='<70% → 0%';}
+      if(rnPct>=100){rc=rn*0.02;rb='≥100% → 2.00%';}
+      else if(rnPct>=90){rc=rn*0.015;rb='≥90% → 1.50%';}
+      else if(rnPct>=80){rc=rn*0.01;rb='≥80% → 1.00%';}
+      else{rc=0;rb='<80% → 0%';}
+
+    } else if(r.includes('regional sales head')||r.includes('rsm')){
+      const gate=qTotalPct>=70;
+      if(qTotalPct>=100){nc=ns*0.0125;nb='≥100% → 1.25%';}
+      else if(qTotalPct>=85){nc=ns*0.009;nb='≥85% → 0.90%';}
+      else if(qTotalPct>=60){nc=ns*0.0055;nb='≥60% → 0.55%';}
+      else{nc=0;nb='<60% → 0%';}
+      if(gate){
+        if(rnPct>=100){rc=rn*0.01;rb='≥100% → 1.00%';}
+        else if(rnPct>=85){rc=rn*0.0075;rb='≥85% → 0.75%';}
+        else if(rnPct>=75){rc=rn*0.005;rb='≥75% → 0.50%';}
+        else{rc=0;rb='<75% → 0%';}
+      }else rb='🔒 Gate locked (need ≥70% total first)';
+
+    } else if(r.includes('sales manager')||r.includes('manager')){
+      const gate=qTotalPct>=70;
+      if(qTotalPct>=100){nc=ns*0.015;nb='≥100% → 1.50%';}
+      else if(qTotalPct>=85){nc=ns*0.0115;nb='≥85% → 1.15%';}
+      else if(qTotalPct>=60){nc=ns*0.008;nb='≥60% → 0.80%';}
+      else{nc=0;nb='<60% → 0%';}
+      if(gate){
+        if(rnPct>=100){rc=rn*0.0125;rb='≥100% → 1.25%';}
+        else if(rnPct>=85){rc=rn*0.01;rb='≥85% → 1.00%';}
+        else if(rnPct>=75){rc=rn*0.0075;rb='≥75% → 0.75%';}
+        else{rc=0;rb='<75% → 0%';}
+      }else rb='🔒 Gate locked (need ≥70% total first)';
+
+    } else {
+      nb=`Role "${role}" not matched — check Sheet 4`;rb='N/A';
+    }
+
+    /*
+     * QUARTERLY BONUS (applies to all roles)
+     * Bonus target = Q total target + spillover from previous Q (missed target carried over).
+     * Stored as: targets[`spillover_${sel}_${year}_${qtr}`]
+     *
+     * If employee DID achieve a bonus slab in previous Q (normal eligibility):
+     *   ≥90% of bonus target  → 25% of one monthly salary
+     *   ≥100% of bonus target → 50% of one monthly salary
+     *
+     * If employee did NOT achieve any bonus slab in previous Q (penalty mode):
+     *   ≥90% of bonus target  → 0  (slab 1 forfeited)
+     *   ≥100% of bonus target → 25% of one monthly salary (reduced from 50%)
+     *   <90%                  → 0
+     *
+     * Q1 is always treated as normal eligibility (no previous Q to penalise from).
+     * Previous Q eligibility flag stored as: targets[`bonus_eligible_${sel}_${year}_${prevQ}`]
+     * Value '0' = missed bonus last Q, anything else (or absent) = normal.
+     */
+    const qIdx=['Q1','Q2','Q3','Q4'].indexOf(qtr);
+    const prevQ=qIdx>0?['Q1','Q2','Q3','Q4'][qIdx-1]:null;
+    const prevMissed=prevQ?targets[`bonus_eligible_${sel}_${year}_${prevQ}`]==='0':false;
+    // Spillover = any unmet target carried forward from previous Q
+    const spillover=parseFloat(targets[`spillover_${sel}_${year}_${qtr}`]||0);
+    const bonusTgt=qTotalTgt+spillover; // effective target for bonus purposes
+    const bonusPct=bonusTgt?pct(ns+rn,bonusTgt):qTotalPct;
+    let bonus=0,bonusNote='';
+    if(prevMissed){
+      // Penalty mode: 90% slab forfeited, 100%+ slab reduced to 25%
+      if(bonusPct>=100){
+        bonus=salary*0.25;
+        bonusNote=`Penalty (missed ${prevQ} bonus): Slab 2 reduced → 25% of salary = AED ${fmt(bonus)}${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      } else if(bonusPct>=90){
+        bonus=0;
+        bonusNote=`Penalty (missed ${prevQ} bonus): 90% slab forfeited → AED 0${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      } else {
+        bonusNote=`Below 90% (${fmtP(bonusPct)}) — no bonus${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      }
+    } else {
+      // Normal eligibility
+      if(bonusPct>=100){
+        bonus=salary*0.50;
+        bonusNote=`Slab 2 (≥100%): 50% of monthly salary = AED ${fmt(bonus)}${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      } else if(bonusPct>=90){
+        bonus=salary*0.25;
+        bonusNote=`Slab 1 (≥90%): 25% of monthly salary = AED ${fmt(bonus)}${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      } else {
+        bonusNote=`Below 90% (${fmtP(bonusPct)}) — no bonus${spillover>0?` | Includes AED ${fmt(spillover)} spillover`:''}`;
+      }
+    }
+
+    const total=nc+rc+bonus;
+    // What-if: next commission slab for sales
+    const salesPctToUse=r.includes('sales consultant')||r.includes('consultant')?qTotalPct:qSalesPct;
+    const slabs=[60,70,75,80,100];
+    const nextSlab=slabs.find(s=>s>salesPctToUse);
+    const salesTgtToUse=r.includes('sales consultant')||r.includes('consultant')?qTotalTgt:qSalesTgt;
+    const whatif=nextSlab&&salesTgtToUse?
+      `Need AED ${fmt(Math.max(0,(salesTgtToUse*nextSlab/100)-ns))} more sales to reach ${nextSlab}% (next slab)`:
+      'At or above 100% — keep it up!';
+
+    return{nc,rc,nb,rb,bonus,bonusNote,total,whatif,qSalesPct,rnPct,qTotalPct,bonusPct,prevMissed,spillover};
+  },[sel,role,ns,rn,qSalesPct,rnPct,qTotalPct,qSalesTgt,qTotalTgt,qRenewTgt,salary,qtr,targets]);
+  /*COMMISSION_LOGIC_END*/
+
+  const debugMsg=sel&&!role?'⚠️ Employee found but Role is empty in Sheet 4':
+    sel&&role&&!['support head','support incharge','support in-charge','regional sales head','rsm','sales manager','manager','sales consultant','consultant'].some(r=>role.toLowerCase().includes(r))?
+    `⚠️ Role "${role}" not recognised — check Sheet 4 spelling`:'';
+
+  function CRow({label,amount,note,warn}){return(
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
+      <div><div style={{fontSize:13,fontWeight:500,color:t.text}}>{label}</div>
+      <div style={{fontSize:11,color:warn?t.danger:t.muted,marginTop:3}}>{note}</div></div>
+      <div style={{fontSize:16,fontWeight:700,fontFamily:"'DM Mono',monospace",color:amount>0?t.success:t.muted}}>AED {fmt(amount)}</div>
+    </div>
+  );}
+
+  return(<div style={{maxWidth:860}}>
+    <Card title="Commission Calculator" t={t} style={{marginBottom:14}}>
+
+      {/* Selector row */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+        <div><label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:6}}>Executive</label>
+          <select value={sel} onChange={e=>setSel(e.target.value)} style={ii}>
+            <option value="">Select executive…</option>
+            {execList.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <div style={{flex:1}}><label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:6}}>Year</label>
+            <select value={year} onChange={e=>setYear(parseInt(e.target.value))} style={ii}>
+              {[2022,2023,2024,2025,2026].map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div style={{flex:1}}><label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:6}}>Quarter</label>
+            <select value={qtr} onChange={e=>setQtr(e.target.value)} style={ii}>
+              {['Q1','Q2','Q3','Q4'].map(q=><option key={q}>{q}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Info bar */}
+      {sel&&<div style={{background:t.surface,borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:13,display:'flex',gap:16,flexWrap:'wrap'}}>
+        <span><strong>{sel}</strong></span>
+        <span style={{color:t.muted}}>Role: <strong style={{color:role?t.text:t.danger}}>{role||'⚠️ Not set'}</strong></span>
+        <span style={{color:t.muted}}>Branch: {info.Branch||'—'}</span>
+        <span style={{color:t.muted}}>Team: {info.Team||'—'}</span>
+        <span style={{color:t.muted}}>Salary: <strong style={{color:t.text}}>AED {fmt(salary)}/mo</strong></span>
+      </div>}
+      {debugMsg&&<div style={{background:'#fef3c7',border:'1px solid #fcd34d',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:12,color:'#92400e'}}>{debugMsg}</div>}
+
+      {/* Target summary */}
+      {sel&&annTarget>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+        {[
+          ['Annual Target',`AED ${fmt(annTarget)}`,t.muted],
+          [`${qtr} Total Target`,`AED ${fmt(qTotalTgt)}`,t.text],
+          [`${qtr} Sales Target`,`AED ${fmt(qSalesTgt)}`,t.accent],
+          [`${qtr} Renewal Target`,`AED ${fmt(qRenewTgt)}`,'#10b981'],
+          [`Sales Collected`,`AED ${fmt(ns)}`,ns>=qSalesTgt&&qSalesTgt>0?t.success:t.text],
+          [`Renewals Collected`,`AED ${fmt(rn)}`,rn>=qRenewTgt&&qRenewTgt>0?t.success:t.text],
+        ].map(([lbl,val,col])=>(
+          <div key={lbl} style={{background:t.surface,borderRadius:8,padding:'8px 12px'}}>
+            <div style={{fontSize:10,color:t.muted,marginBottom:3}}>{lbl}</div>
+            <div style={{fontSize:14,fontWeight:700,fontFamily:"'DM Mono',monospace",color:col}}>{val}</div>
+          </div>
+        ))}
+      </div>}
+
+      {/* Progress bars */}
+      {result&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
+        {[
+          [`Sales vs ${qtr} Sales Tgt`,result.qSalesPct,t.accent],
+          [`Renewals vs ${qtr} Renewal Tgt`,result.rnPct,'#10b981'],
+          [`Total vs ${qtr} Total Tgt`,result.qTotalPct,'#8b5cf6'],
+        ].map(([lbl,val,col])=>(
+          <div key={lbl} style={{background:t.surface,borderRadius:8,padding:'10px 14px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:5,fontSize:11}}>
+              <span style={{color:t.muted}}>{lbl}</span>
+              <strong style={{color:val>=100?t.success:val>=75?t.warning:t.danger}}>{fmtP(val)}</strong>
+            </div>
+            <div style={{background:t.border,borderRadius:4,height:5}}>
+              <div style={{height:5,borderRadius:4,background:col,width:`${Math.min(100,val)}%`,transition:'width .3s'}}/>
+            </div>
+          </div>
+        ))}
+      </div>}
+
+      {/* Stream editor */}
+      <div style={{marginBottom:12}}>
+        <Btn t={t} onClick={()=>setShowStreamEdit(s=>!s)} style={{fontSize:11,padding:'4px 10px'}}>
+          {showStreamEdit?'▲ Hide':'⚙ Edit'} Stream Filters
+        </Btn>
+      </div>
+      {showStreamEdit&&<div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,padding:'14px 16px',marginBottom:16}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:t.muted,marginBottom:8}}>SALES STREAMS (one per line)</div>
+            <textarea value={nsStreams.join('\n')} onChange={e=>setNsStreams(e.target.value.split('\n').map(s=>s.trim()).filter(Boolean))}
+              style={{...ii,height:160,resize:'vertical',fontSize:11,fontFamily:"'DM Mono',monospace",lineHeight:1.6}}/>
+            <Btn t={t} onClick={()=>setNsStreams(DEFAULT_NS_STREAMS)} style={{fontSize:11,marginTop:6,padding:'3px 8px'}}>Reset to defaults</Btn>
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:t.muted,marginBottom:8}}>RENEWAL STREAMS (one per line)</div>
+            <textarea value={rnStreams.join('\n')} onChange={e=>setRnStreams(e.target.value.split('\n').map(s=>s.trim()).filter(Boolean))}
+              style={{...ii,height:160,resize:'vertical',fontSize:11,fontFamily:"'DM Mono',monospace",lineHeight:1.6}}/>
+            <Btn t={t} onClick={()=>setRnStreams(DEFAULT_RN_STREAMS)} style={{fontSize:11,marginTop:6,padding:'3px 8px'}}>Reset to defaults</Btn>
+          </div>
+        </div>
+      </div>}
+
+      {/* Amount inputs */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+            <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Sales Collected QTD (AED)</label>
+            <span style={{fontSize:10,background:nsOverride?t.warning+'33':t.success+'33',color:nsOverride?t.warning:t.success,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{nsOverride?'Manual':'Auto'}</span>
+          </div>
+          <input type="number" value={nsAmt} onChange={e=>{setNsAmt(e.target.value);setNsOverride(true);}} placeholder="0" style={ii}/>
+          {nsOverride&&<Btn t={t} onClick={()=>setNsOverride(false)} style={{fontSize:10,padding:'2px 7px',marginTop:4}}>↩ Reset to Auto</Btn>}
+          {qSalesTgt>0&&<div style={{fontSize:11,color:t.muted,marginTop:4}}>{qtr} sales target: AED {fmt(qSalesTgt)} → <strong style={{color:(result&&result.qSalesPct>=100)?t.success:(result&&result.qSalesPct>=75)?t.warning:t.danger}}>{fmtP(qSalesPct)}</strong></div>}
+          {!annTarget&&sel&&<div style={{fontSize:11,color:t.warning,marginTop:4}}>⚠️ No {year} target — go to Targets tab</div>}
+        </div>
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+            <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Renewals Collected QTD (AED)</label>
+            {role.toLowerCase().includes('sales consultant')
+              ? <span style={{fontSize:10,background:t.muted+'22',color:t.muted,borderRadius:4,padding:'1px 6px',fontWeight:600}}>N/A</span>
+              : <span style={{fontSize:10,background:rnOverride?t.warning+'33':t.success+'33',color:rnOverride?t.warning:t.success,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{rnOverride?'Manual':'Auto'}</span>
+            }
+          </div>
+          {role.toLowerCase().includes('sales consultant')
+            ? <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'9px 12px',fontSize:12,color:t.muted}}>Not applicable — all collections loaded into Sales above.</div>
+            : <input type="number" value={rnAmt} onChange={e=>{setRnAmt(e.target.value);setRnOverride(true);}} placeholder="0" style={ii}/>
+          }
+          {!role.toLowerCase().includes('sales consultant')&&rnOverride&&<Btn t={t} onClick={()=>setRnOverride(false)} style={{fontSize:10,padding:'2px 7px',marginTop:4}}>↩ Reset to Auto</Btn>}
+          {!role.toLowerCase().includes('sales consultant')&&qRenewTgt>0&&<div style={{fontSize:11,color:t.muted,marginTop:4}}>{qtr} renewal target: AED {fmt(qRenewTgt)} → <strong style={{color:(result&&result.rnPct>=100)?t.success:(result&&result.rnPct>=75)?t.warning:t.danger}}>{fmtP(rnPct)}</strong></div>}
+          {!role.toLowerCase().includes('sales consultant')&&!qRenewTgt&&sel&&<div style={{fontSize:11,color:t.muted,marginTop:4}}>No Q renewal target set (set in Targets tab as <code>renewals_q_{sel}_{year}_{qtr}</code>)</div>}
+        </div>
+      </div>
+
+      {/* Results */}
+      {result?<div>
+        <div style={{borderTop:`1px solid ${t.border}`,paddingTop:14}}>
+          <CRow label="Sales Commission" amount={result.nc} note={result.nb}/>
+          <CRow label="Renewals Commission" amount={result.rc} note={result.rb}/>
+          <CRow label="Quarterly Performance Bonus" amount={result.bonus} note={result.bonusNote} warn={result.prevMissed}/>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:14}}>
+            <span style={{fontSize:15,fontWeight:700,color:t.text}}>Total (Commission + Bonus)</span>
+            <span style={{fontSize:26,fontWeight:700,color:t.accent,fontFamily:"'DM Mono',monospace"}}>AED {fmt(result.total)}</span>
+          </div>
+        </div>
+        <div style={{background:t.surface,border:`1px solid ${t.accent}33`,borderRadius:8,padding:'10px 14px',marginTop:14,fontSize:13,color:t.accent}}>
+          💡 {result.whatif}
+        </div>
+      </div>:<div style={{textAlign:'center',padding:24,color:t.muted,fontSize:13}}>Select an executive to calculate commission</div>}
+    </Card>
+
+    {/* Commission Code Editor */}
+    <Card title="⚙ Commission Logic Editor" t={t} style={{marginTop:14}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:10,lineHeight:1.6}}>
+        The commission calculation logic is embedded in this file between <code>COMMISSION_LOGIC_START</code> and <code>COMMISSION_LOGIC_END</code> markers.
+        Use the AI prompt below to generate updated logic, review it, then click <strong>Apply & Save</strong> to replace the live calculation.
+      </div>
+      <Btn t={t} onClick={()=>setShowCodeEditor(s=>!s)} style={{marginBottom:10}}>
+        {showCodeEditor?'▲ Hide':'✏ Edit'} Commission Code
+      </Btn>
+      {showCodeEditor&&<CommissionCodeEditor t={t} dark={dark}/>}
+    </Card>
+  </div>);
+}
+
+/* ── Commission Code Editor ── */
+function CommissionCodeEditor({t,dark}){
+  const[code,setCode]=useState('');
+  const[prompt,setPrompt]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[msg,setMsg]=useState('');
+  const ii={background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:t.text,fontFamily:"'DM Mono',monospace",width:'100%'};
+
+  useEffect(()=>{
+    // Extract current commission logic from the live page source
+    const src=(document.querySelector('script[type="text/babel"]')||{}).textContent||'';
+    const start=src.indexOf('/*COMMISSION_LOGIC_START*/');
+    const end=src.indexOf('/*COMMISSION_LOGIC_END*/');
+    if(start>-1&&end>-1)setCode(src.slice(start+25,end).trim());
+    else setCode('// Could not extract — paste your commission logic here');
+  },[]);
+
+  const applyCode=()=>{
+    // Replace the commission logic block in the page's script tag and trigger re-save
+    try{
+      const script=document.querySelector('script[type="text/babel"]');
+      if(!script){setMsg('❌ Could not find script tag');return;}
+      const src=script.textContent;
+      const s=src.indexOf('/*COMMISSION_LOGIC_START*/');
+      const e=src.indexOf('/*COMMISSION_LOGIC_END*/');
+      if(s<0||e<0){setMsg('❌ Markers not found');return;}
+      const newSrc=src.slice(0,s+25)+'\n'+code+'\n  '+src.slice(e);
+      script.textContent=newSrc;
+      // Trigger download of updated HTML
+      const html=document.documentElement.outerHTML;
+      const blob=new Blob([html],{type:'text/html'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='Focus_Dashboard_updated.html';
+      a.click();
+      setMsg('✅ Updated HTML downloaded — replace your current file with it');
+    }catch(e){setMsg('❌ '+e.message);}
+  };
+
+  return(<div>
+    <div style={{marginBottom:10}}>
+      <label style={{fontSize:11,fontWeight:600,color:t.muted,display:'block',marginBottom:6}}>Current commission logic (editable):</label>
+      <textarea value={code} onChange={e=>setCode(e.target.value)}
+        style={{...ii,height:300,resize:'vertical',lineHeight:1.5}}/>
+    </div>
+    {msg&&<div style={{fontSize:12,color:msg.startsWith('✅')?t.success:t.danger,marginBottom:10,padding:'8px 12px',background:t.surface,borderRadius:8}}>{msg}</div>}
+    <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+      <Btn t={t} onClick={applyCode} style={{background:t.accent,color:'#fff',borderColor:t.accent}}>
+        💾 Apply & Download Updated File
+      </Btn>
+    </div>
+  </div>);
+}
+
+/* ── Pipeline Tab ── */
+function PipelineTab({s3,sheets,t,dark}){
+  const tt={background:t.card,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12};
+
+  // Build filter options from s3 and sheet4
+  const s4map=useMemo(()=>{const m={};sheets.s4.forEach(r=>{if(r.Name)m[r.Name.trim()]=r;});return m;},[sheets.s4]);
+  const opts=useMemo(()=>({
+    regions:[...new Set(s3.map(r=>r.Region||r.Branch).filter(Boolean))].sort(),
+    branches:[...new Set(s3.map(r=>r.Branch).filter(Boolean))].sort(),
+    teams:[...new Set(s3.map(r=>r.Team||(r.Executive&&s4map[r.Executive.trim()]&&s4map[r.Executive.trim()].Team)).filter(Boolean))].sort(),
+    execs:[...new Set(s3.map(r=>r.Executive).filter(Boolean))].sort(),
+    months:MONTHS.filter(m=>s3.some(r=>r.Month===m)),
+  }),[s3,s4map]);
+
+  const[fRegion,setFRegion]=useState([]);const[fBranch,setFBranch]=useState([]);
+  const[fTeam,setFTeam]=useState([]);const[fExec,setFExec]=useState([]);const[fMonth,setFMonth]=useState([]);
+
+  const filtered=useMemo(()=>s3.filter(r=>{
+    if(fRegion.length&&!fRegion.includes(r.Region||r.Branch))return false;
+    if(fBranch.length&&!fBranch.includes(r.Branch))return false;
+    const team=r.Team||(r.Executive&&s4map[r.Executive.trim()]&&s4map[r.Executive.trim()].Team);
+    if(fTeam.length&&!fTeam.includes(team))return false;
+    if(fExec.length&&!fExec.includes(r.Executive))return false;
+    if(fMonth.length&&!fMonth.includes(r.Month))return false;
+    return true;
+  }),[s3,fRegion,fBranch,fTeam,fExec,fMonth,s4map]);
+
+  const activeFC=[fRegion,fBranch,fTeam,fExec,fMonth].reduce((s,a)=>s+a.length,0);
+  const clearAll=()=>{setFRegion([]);setFBranch([]);setFTeam([]);setFExec([]);setFMonth([]);};
+  const tog=(arr,setArr,v)=>setArr(a=>a.includes(v)?a.filter(x=>x!==v):[...a,v]);
+
+  const pipeline=useMemo(()=>{
+    let as=0,un=0;const byExec={};
+    filtered.forEach(r=>{const a=parseAmt(r['Collection Amount']);const ex=r.Executive||'Unknown';if(!byExec[ex])byExec[ex]={name:ex,assured:0,unassured:0,rows:0};if(HIGH_CONF.has(r['Collection Type'])){as+=a;byExec[ex].assured+=a;}if(LOW_CONF.has(r['Collection Type'])){un+=a;byExec[ex].unassured+=a;}byExec[ex].rows++;});
+    return{assured:as,unassured:un,total:as+un,byExec:Object.values(byExec).sort((a,b)=>(b.assured+b.unassured)-(a.assured+a.unassured))};
+  },[filtered]);
+
+  const byMonth=useMemo(()=>{const m={};filtered.forEach(r=>{const k=r.Month||'?';if(!m[k])m[k]={month:k,assured:0,unassured:0};const a=parseAmt(r['Collection Amount']);if(HIGH_CONF.has(r['Collection Type']))m[k].assured+=a;if(LOW_CONF.has(r['Collection Type']))m[k].unassured+=a;});return MONTHS.filter(mo=>m[mo]).map(mo=>m[mo]);},[filtered]);
+  const byStage=useMemo(()=>{const m={};filtered.forEach(r=>{const k=r.Stage||'Unknown';m[k]=(m[k]||0)+parseAmt(r['Collection Amount']);});return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value}));},[filtered]);
+
+  // AI prompt
+  const aiPrompt=useMemo(()=>{
+    const topExecs=pipeline.byExec.slice(0,5).map(e=>`${e.name}: Assured AED ${fmt(e.assured)}, Unassured AED ${e.unassured}`).join('; ');
+    return `You are a sales analytics assistant. Analyse this pipeline data and give 4-5 actionable bullet-point insights:\n- Total Assured Pipeline: AED ${fmt(pipeline.assured)}\n- Total Unassured Pipeline: AED ${fmt(pipeline.unassured)}\n- Confidence Rate: ${fmtP(pct(pipeline.assured,pipeline.total||1))}\n- Top executives: ${topExecs}\n- Active filters: ${activeFC>0?[...fRegion,...fBranch,...fTeam,...fExec].join(', '):'None (full pipeline)'}\nFocus on risks, opportunities, and what sales managers should act on this week.`;
+  },[pipeline,activeFC,fRegion,fBranch,fTeam,fExec]);
+
+  if(!s3.length)return(<div style={{textAlign:'center',padding:80,color:t.muted}}><div style={{fontSize:48,marginBottom:16}}>🔭</div><div style={{fontSize:18,fontWeight:600,color:t.text,marginBottom:8}}>No pipeline data</div><div>Upload Sheet 3 in Settings.</div></div>);
+
+  return(<div style={{display:'flex',gap:16}}>
+    {/* Filter sidebar */}
+    <div style={{width:190,flexShrink:0}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <span style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>Filter Pipeline</span>
+        {activeFC>0&&<Btn t={t} onClick={clearAll} style={{padding:'2px 7px',fontSize:11}}>Clear</Btn>}
+      </div>
+      {opts.regions.length>0&&<FG label="Region" t={t}>{opts.regions.map(v=><Chip key={v} label={v} active={fRegion.includes(v)} onClick={()=>tog(fRegion,setFRegion,v)} t={t}/>)}</FG>}
+      {opts.branches.length>0&&<FG label="Branch" t={t}>{opts.branches.map(v=><Chip key={v} label={v} active={fBranch.includes(v)} onClick={()=>tog(fBranch,setFBranch,v)} t={t}/>)}</FG>}
+      {opts.teams.length>0&&<FG label="Team" t={t}>{opts.teams.map(v=><Chip key={v} label={v} active={fTeam.includes(v)} onClick={()=>tog(fTeam,setFTeam,v)} t={t}/>)}</FG>}
+      {opts.months.length>0&&<FG label="Month" t={t}>{opts.months.map(v=><Chip key={v} label={v} active={fMonth.includes(v)} onClick={()=>tog(fMonth,setFMonth,v)} t={t}/>)}</FG>}
+      {opts.execs.length>0&&<FG label="Executive" t={t}>{opts.execs.map(v=><Chip key={v} label={v} active={fExec.includes(v)} onClick={()=>tog(fExec,setFExec,v)} t={t}/>)}</FG>}
+    </div>
+
+    {/* Main content */}
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:16}}>
+        <KPI label="Assured Pipeline" value={`AED ${fmt(pipeline.assured)}`} sub="High confidence" t={t}/>
+        <KPI label="Unassured Pipeline" value={`AED ${fmt(pipeline.unassured)}`} sub="Low confidence" t={t}/>
+        <KPI label="Total Pipeline" value={`AED ${fmt(pipeline.total)}`} t={t}/>
+        <KPI label="Confidence Rate" value={fmtP(pct(pipeline.assured,pipeline.total||1))} ac={pct(pipeline.assured,pipeline.total||1)>=70?t.success:t.warning} t={t}/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+        <ChartCard title="Pipeline by Month" chartId="pipeline_month" data={byMonth} keys={[{key:'assured',name:'Assured',color:'#10b981'},{key:'unassured',name:'Unassured',color:'#f59e0b'}]} nameKey="month" height={220} defaultType="bar" t={t}/>
+        <ChartCard title="Pipeline by Stage" chartId="pipeline_stage" data={byStage} keys={[{key:'value',name:'Amount',color:t.accent}]} height={220} defaultType="funnel" t={t}/>
+      </div>
+      <Card title="Pipeline by Executive" t={t} style={{marginBottom:14}}>
+        <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead><tr>{['Executive','Assured','Unassured','Total','Confidence'].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead>
+          <tbody>{pipeline.byExec.map((e,i)=>{const tot=e.assured+e.unassured;const conf=tot?pct(e.assured,tot):0;return(<tr key={i}><TD t={t}>{e.name}</TD><TD t={t} mono color={t.success}>AED {fmt(e.assured)}</TD><TD t={t} mono color={t.warning}>AED {fmt(e.unassured)}</TD><TD t={t} mono bold>AED {fmt(tot)}</TD><TD t={t}><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{background:t.surface,borderRadius:4,height:5,width:80}}><div style={{height:5,borderRadius:4,background:conf>70?'#10b981':'#f59e0b',width:`${conf}%`}}/></div><span style={{fontSize:11}}>{conf.toFixed(0)}%</span></div></TD></tr>);})}</tbody>
+        </table></div>
+      </Card>
+      <AIInsights prompt={aiPrompt} t={t} label="AI Pipeline Insights"/>
+      <PipelineRawSheet s3={filtered} t={t}/>
+    </div>
+  </div>);
+}
+
+/* ── Pipeline Raw Data Sheet ── */
+function PipelineRawSheet({s3,t}){
+  const[search,setSearch]=useState('');const[sortCol,setSortCol]=useState('');const[sortDir,setSortDir]=useState(1);
+  const[page,setPage]=useState(0);const PAGE_SIZE=50;
+
+  const headers=useMemo(()=>{
+    if(!s3.length)return[];
+    const all=new Set();s3.forEach(r=>Object.keys(r).forEach(k=>all.add(k)));
+    return [...all];
+  },[s3]);
+
+  const filtered=useMemo(()=>{
+    let rows=s3.filter(r=>!search||Object.values(r).some(v=>(v||'').toLowerCase().includes(search.toLowerCase())));
+    if(sortCol){rows=[...rows].sort((a,b)=>{const av=a[sortCol]||'';const bv=b[sortCol]||'';const an=parseFloat(av.replace(/[^0-9.-]/g,''));const bn=parseFloat(bv.replace(/[^0-9.-]/g,''));if(!isNaN(an)&&!isNaN(bn))return(an-bn)*sortDir;return av.localeCompare(bv)*sortDir;});}
+    return rows;
+  },[s3,search,sortCol,sortDir]);
+
+  const pageRows=filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+  const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
+
+  const sort=(col)=>{if(sortCol===col)setSortDir(d=>-d);else{setSortCol(col);setSortDir(1);}setPage(0);};
+
+  const exportCSV=()=>{
+    const rows=[headers.join(','),...s3.map(r=>headers.map(h=>`"${(r[h]||'').replace(/"/g,'""')}"`).join(','))];
+    const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='pipeline_data.csv';a.click();
+  };
+
+  if(!s3.length)return null;
+
+  return(
+    <div style={{marginTop:16}}>
+      <Card title={`Raw Pipeline Data — ${s3.length} rows`} t={t} action={<Btn t={t} onClick={exportCSV} style={{fontSize:11,padding:'4px 10px'}}>⬇ Export CSV</Btn>}>
+        {/* Search */}
+        <div style={{marginBottom:12,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          <input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder="Search across all columns..." style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'7px 12px',fontSize:13,color:t.text,flex:1,minWidth:200}}/>
+          {search&&<span style={{fontSize:12,color:t.muted}}>{filtered.length} of {s3.length} rows</span>}
+          <span style={{fontSize:12,color:t.muted}}>Page {page+1}/{totalPages}</span>
+          <div style={{display:'flex',gap:4}}>
+            <Btn t={t} disabled={page===0} onClick={()=>setPage(p=>p-1)} style={{padding:'4px 10px',fontSize:12}}>‹</Btn>
+            <Btn t={t} disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)} style={{padding:'4px 10px',fontSize:12}}>›</Btn>
+          </div>
+        </div>
+        {/* Table */}
+        <div style={{overflowX:'auto',overflowY:'auto',maxHeight:520,border:`1px solid ${t.border}`,borderRadius:8}}>
+          <table style={{borderCollapse:'collapse',fontSize:12,minWidth:'100%'}}>
+            <thead style={{position:'sticky',top:0,zIndex:10}}>
+              <tr style={{background:t.card}}>
+                {headers.map(h=>(
+                  <th key={h} onClick={()=>sort(h)} style={{padding:'8px 10px',borderBottom:`2px solid ${t.border}`,textAlign:'left',fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.4px',fontSize:10,cursor:'pointer',whiteSpace:'nowrap',userSelect:'none',background:t.card}}>
+                    {h} {sortCol===h?(sortDir===1?'▲':'▼'):''}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((row,i)=>(
+                <tr key={i} style={{background:i%2===0?t.card:t.surface}}>
+                  {headers.map(h=>{
+                    const v=row[h]||'';
+                    const isAmt=h.toLowerCase().includes('amount')||h.toLowerCase().includes('collection');
+                    const num=isAmt?parseAmt(v):0;
+                    return(
+                      <td key={h} style={{padding:'6px 10px',borderBottom:`1px solid ${t.border}`,whiteSpace:'nowrap',color:isAmt&&num>0?t.success:t.text,fontFamily:isAmt?"'DM Mono',monospace":undefined,maxWidth:220,overflow:'hidden',textOverflow:'ellipsis'}}
+                        title={v}>
+                        {isAmt&&num>0?`AED ${fmt(num)}`:v}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{marginTop:8,fontSize:11,color:t.muted,display:'flex',justifyContent:'space-between'}}>
+          <span>Showing rows {page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
+          <span>Click any column header to sort</span>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ── Performance Tab ── */
+function PerformanceTab({allTx,targets,sheets,t}){
+  const[selYear,setSelYear]=useState(new Date().getFullYear());
+  const[selQtr,setSelQtr]=useState('Q1');
+  const[view,setView]=useState('monthly');
+  const[compareView,setCompareView]=useState('branch');
+  const[treeLevel,setTreeLevel]=useState('branch'); // 'branch' | 'team' | 'employee'
+  const[expanded,setExpanded]=useState({}); // {key: true} map
+  const[fMonth,setFMonth]=useState([]);
+  const[fTeam,setFTeam]=useState([]);
+  const[fBranch,setFBranch]=useState([]);
+  const inp={background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'7px 10px',fontSize:13,color:t.text,fontFamily:"'DM Sans',sans-serif"};
+
+  const availYears=useMemo(()=>[...new Set(allTx.map(r=>r._year).filter(Boolean))].sort((a,b)=>b-a),[allTx]);
+
+  const s2FilterOpts=useMemo(()=>{
+    const yearTx=allTx.filter(r=>String(r._year)===String(selYear));
+    return{
+      months:MONTHS.filter(m=>yearTx.some(r=>r.Month===m)),
+      teams:[...new Set(yearTx.map(r=>r.Team).filter(Boolean))].sort(),
+      branches:[...new Set(yearTx.map(r=>r.Branch).filter(Boolean))].sort(),
+    };
+  },[allTx,selYear]);
+
+  useEffect(()=>{setFMonth([]);setFTeam([]);setFBranch([]);setExpanded({});},[selYear]);
+  useEffect(()=>{setExpanded({});},[treeLevel]);
+
+  const tog=(arr,setArr,v)=>setArr(a=>a.includes(v)?a.filter(x=>x!==v):[...a,v]);
+  const activeFC=fMonth.length+fTeam.length+fBranch.length;
+
+  const toggleExpand=(key)=>setExpanded(prev=>{const n={...prev};n[key]?delete n[key]:n[key]=true;return n;});
+
+  // ── Monthly data (unchanged) ──────────────────────────────────────────────
+  const monthlyData=useMemo(()=>{
+    const byYM={};
+    const txForMonthly=allTx.filter(r=>{
+      if(fTeam.length&&!fTeam.includes(r.Team))return false;
+      if(fBranch.length&&!fBranch.includes(r.Branch))return false;
+      return true;
+    });
+    txForMonthly.forEach(r=>{if(!r._year||!r.Month)return;const y=String(r._year);if(!byYM[y])byYM[y]={};byYM[y][r.Month]=(byYM[y][r.Month]||0)+r._amount;});
+    const dataYears=[...new Set(txForMonthly.map(r=>String(r._year)).filter(v=>v&&v!=='null'))].sort();
+    const curYr=String(selYear);const prevYr=String(selYear-1);
+    const rows=[];
+    ['Q1','Q2','Q3','Q4'].forEach(q=>{
+      const qT={};dataYears.forEach(y=>qT[y]=0);
+      Q_MONTHS[q].forEach(mo=>{
+        const row={month:mo,isMonth:true};
+        dataYears.forEach(y=>{const v=(byYM[y]||{})[mo]||0;row[y]=v;qT[y]+=v;});
+        row.d1=(row[curYr]||0)-(row[String(selYear-2)]||0);
+        row.d2=(row[curYr]||0)-(row[prevYr]||0);
+        rows.push(row);
+      });
+      const qRow={month:q,isMonth:false};
+      dataYears.forEach(y=>qRow[y]=qT[y]);
+      qRow.d1=(qT[curYr]||0)-(qT[String(selYear-2)]||0);
+      qRow.d2=(qT[curYr]||0)-(qT[prevYr]||0);
+      rows.push(qRow);
+    });
+    return{rows,dataYears};
+  },[allTx,selYear,fTeam,fBranch]);
+
+  // ── Build the full grouped structure (branch → team → employees) ──────────
+  const groupedData=useMemo(()=>{
+    const curYr=String(selYear);
+    const qMos=Q_MONTHS[selQtr]||[];
+    const qIdx=['Q1','Q2','Q3','Q4'].indexOf(selQtr);
+    const ytdMos=[].concat(...['Q1','Q2','Q3','Q4'].slice(0,qIdx+1).map(q=>Q_MONTHS[q]));
+
+    const baseTx=allTx.filter(r=>{
+      if(String(r._year)!==curYr)return false;
+      if(fTeam.length&&!fTeam.includes(r.Team))return false;
+      if(fBranch.length&&!fBranch.includes(r.Branch))return false;
+      return true;
+    });
+    const monthFilterActive=fMonth.length>0;
+    const effectiveQMos=monthFilterActive?qMos.filter(m=>fMonth.includes(m)):qMos;
+    const effectiveYtdMos=monthFilterActive?ytdMos.filter(m=>fMonth.includes(m)):ytdMos;
+
+    const qtdByE={},ytdByE={},empTeam={},empBranch={};
+    baseTx.forEach(r=>{
+      const emp=r.Employee&&r.Employee.trim();if(!emp)return;
+      if(effectiveQMos.includes(r.Month))qtdByE[emp]=(qtdByE[emp]||0)+r._amount;
+      if(effectiveYtdMos.includes(r.Month))ytdByE[emp]=(ytdByE[emp]||0)+r._amount;
+      if(r.Team&&!empTeam[emp])empTeam[emp]=r.Team;
+      if(r.Branch&&!empBranch[emp])empBranch[emp]=r.Branch;
+    });
+
+    const allEmps=new Set([...Object.keys(qtdByE),...Object.keys(ytdByE)]);
+    const org3=buildOrg(sheets.s4);
+    const s4people={};org3.list.forEach(p=>{s4people[p.name]=p;});
+
+    // grouped[branch][team] = [employees]
+    const grouped={};
+    allEmps.forEach(empName=>{
+      const s4p=s4people[empName];
+      const team=empTeam[empName]||(s4p&&s4p.teams&&s4p.teams[0])||'Unassigned';
+      const branch=empBranch[empName]||(s4p&&s4p.branches&&s4p.branches[0])||'Unassigned';
+      const role=(s4p&&s4p.role)||'Executive';
+      if(!grouped[branch])grouped[branch]={};
+      if(!grouped[branch][team])grouped[branch][team]=[];
+      const ytd=ytdByE[empName]||0;
+      const at=parseFloat(targets[`target_${empName}_${selYear}`]||0);
+      const qt=at*(Q_WEIGHTS[selQtr]||0.25);
+      const v=ytd-qt;
+      const aq=qt?pct(ytd,qt):0;
+      const aa=at?pct(ytd,at):0;
+      const st=aq>=100?'On Track':aq>=75?'At Risk':'Behind';
+      grouped[branch][team].push({name:empName,role,team,branch,ytd,at,qt,v,aq,aa,st});
+    });
+
+    // Pre-aggregate teams and branches
+    const branchMap={};
+    Object.keys(grouped).sort().forEach(branch=>{
+      let bYtd=0,bAt=0,bQt=0;
+      const teamMap={};
+      Object.keys(grouped[branch]).sort().forEach(team=>{
+        const members=grouped[branch][team].sort((a,b)=>b.ytd-a.ytd);
+        let tYtd=0,tAt=0,tQt=0;
+        members.forEach(m=>{tYtd+=m.ytd;tAt+=m.at;tQt+=m.qt;});
+        bYtd+=tYtd;bAt+=tAt;bQt+=tQt;
+        teamMap[team]={ytd:tYtd,at:tAt,qt:tQt,v:tYtd-tQt,aq:tQt?pct(tYtd,tQt):0,aa:tAt?pct(tYtd,tAt):0,members};
+      });
+      branchMap[branch]={ytd:bYtd,at:bAt,qt:bQt,v:bYtd-bQt,aq:bQt?pct(bYtd,bQt):0,aa:bAt?pct(bYtd,bAt):0,teams:teamMap};
+    });
+    return branchMap;
+  },[allTx,selYear,selQtr,fMonth,fTeam,fBranch,sheets.s4,targets]);
+
+  // ── Build visible rows based on treeLevel and expanded state ─────────────
+  const treeRows=useMemo(()=>{
+    const rows=[];
+    Object.keys(groupedData).sort().forEach(branch=>{
+      const bd=groupedData[branch];
+      rows.push({
+        key:`b:${branch}`,label:branch,icon:'🏢',level:0,
+        isHeader:true,nodeType:'branch',
+        ytd:bd.ytd,at:bd.at,qt:bd.qt,v:bd.v,aq:bd.aq,aa:bd.aa,
+        hasChildren:true,childCount:Object.keys(bd.teams).length,
+      });
+      if(treeLevel==='branch')return; // branch-only view: no children
+
+      // Show teams if level is 'team' or 'employee', or if branch is expanded
+      const showTeams=treeLevel==='team'||treeLevel==='employee'||expanded[`b:${branch}`];
+      if(!showTeams)return;
+
+      Object.keys(bd.teams).sort().forEach(team=>{
+        const td=bd.teams[team];
+        rows.push({
+          key:`t:${branch}:${team}`,label:team,icon:'👥',level:1,
+          isHeader:true,nodeType:'team',
+          ytd:td.ytd,at:td.at,qt:td.qt,v:td.v,aq:td.aq,aa:td.aa,
+          hasChildren:true,childCount:td.members.length,branch,
+        });
+        if(treeLevel==='team')return; // team-level view: no employees
+
+        // Show employees if level is 'employee', or if team is expanded
+        const showEmps=treeLevel==='employee'||expanded[`t:${branch}:${team}`];
+        if(!showEmps)return;
+
+        td.members.forEach(m=>{
+          rows.push({
+            key:`e:${m.name}`,label:m.name,icon:'',level:2,
+            isHeader:false,nodeType:'employee',role:m.role,
+            ytd:m.ytd,at:m.at,qt:m.qt,v:m.v,aq:m.aq,aa:m.aa,st:m.st,
+          });
+        });
+      });
+    });
+    return rows;
+  },[groupedData,treeLevel,expanded]);
+
+  // ── Year comparison ───────────────────────────────────────────────────────
+  const compareData=useMemo(()=>{
+    const dataYears=[...new Set(allTx.map(r=>String(r._year)).filter(v=>v&&v!=='null'))].sort().slice(-5);
+    let keys=[];
+    if(compareView==='branch')keys=[...new Set(allTx.map(r=>r.Branch).filter(Boolean))].sort();
+    else if(compareView==='team')keys=[...new Set(allTx.map(r=>r.Team).filter(Boolean))].sort();
+    else keys=[...new Set(allTx.map(r=>r.Employee).filter(Boolean))].sort().slice(0,20);
+    const rows=keys.map(k=>{const row={name:k};dataYears.forEach(y=>{row[y]=allTx.filter(r=>String(r._year)===y&&(compareView==='branch'?r.Branch:compareView==='team'?r.Team:r.Employee)===k).reduce((s,r)=>s+r._amount,0);});return row;});
+    return{rows,dataYears};
+  },[allTx,compareView]);
+
+  const{rows,dataYears}=monthlyData;
+  const curYr=String(selYear);
+  const visY=dataYears.filter(y=>parseInt(y)<=selYear).slice(-5);
+  const sb=s=>{if(s==='On Track')return <Badge text={s} type="green"/>;if(s==='At Risk')return <Badge text={s} type="amber"/>;if(s==='Behind')return <Badge text={s} type="red"/>;return null;};
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return(<div>
+    {/* Top controls */}
+    <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+      <div style={{display:'flex',background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+        {[['monthly','📅 Monthly'],['employee','👤 Performance'],['compare','📊 Year Comparison'],['org','🌳 Org View']].map(([v,l])=>(
+          <button key={v} onClick={()=>setView(v)} style={{padding:'7px 14px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:view===v?t.accent:'transparent',color:view===v?'#fff':t.muted,fontFamily:"'DM Sans',sans-serif"}}>{l}</button>
+        ))}
+      </div>
+      <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} style={inp}>
+        {(availYears.length?availYears:[2021,2022,2023,2024,2025,2026]).map(y=><option key={y} value={y}>{y}</option>)}
+      </select>
+      {view==='employee'&&<select value={selQtr} onChange={e=>setSelQtr(e.target.value)} style={inp}>
+        {['Q1','Q2','Q3','Q4'].map(q=><option key={q}>{q}</option>)}
+      </select>}
+      {view==='compare'&&<select value={compareView} onChange={e=>setCompareView(e.target.value)} style={inp}>
+        <option value="branch">By Branch</option><option value="team">By Team</option><option value="individual">By Individual</option>
+      </select>}
+    </div>
+
+    {/* ── PERFORMANCE TREE VIEW ─────────────────────────────────────────── */}
+    {view==='employee'&&<div style={{display:'flex',gap:16}}>
+      {/* Left sidebar: filters */}
+      <div style={{width:175,flexShrink:0}}>
+        {/* Level selector */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:8}}>View Level</div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            {[['branch','🏢 Branch'],['team','👥 Team'],['employee','👤 Employee']].map(([v,l])=>(
+              <button key={v} onClick={()=>setTreeLevel(v)} style={{
+                padding:'7px 10px',fontSize:12,fontWeight:600,border:`1px solid ${treeLevel===v?t.accent:t.border}`,
+                borderRadius:7,cursor:'pointer',textAlign:'left',
+                background:treeLevel===v?t.accent+'18':'transparent',
+                color:treeLevel===v?t.accent:t.muted,fontFamily:"'DM Sans',sans-serif",
+              }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {/* Filters */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>Filters</span>
+          {activeFC>0&&<Btn t={t} onClick={()=>{setFMonth([]);setFTeam([]);setFBranch([]);}} style={{padding:'2px 7px',fontSize:11}}>Clear</Btn>}
+        </div>
+        {s2FilterOpts.branches.length>0&&<FG label="Branch" t={t}>{s2FilterOpts.branches.map(v=><Chip key={v} label={v} active={fBranch.includes(v)} onClick={()=>tog(fBranch,setFBranch,v)} t={t}/>)}</FG>}
+        {s2FilterOpts.teams.length>0&&<FG label="Team" t={t}>{s2FilterOpts.teams.map(v=><Chip key={v} label={v} active={fTeam.includes(v)} onClick={()=>tog(fTeam,setFTeam,v)} t={t}/>)}</FG>}
+        {s2FilterOpts.months.length>0&&<FG label="Month" t={t}>{s2FilterOpts.months.map(v=><Chip key={v} label={v} active={fMonth.includes(v)} onClick={()=>tog(fMonth,setFMonth,v)} t={t}/>)}</FG>}
+      </div>
+
+      {/* Right: tree table */}
+      <div style={{flex:1,minWidth:0}}>
+        <Card title={`Performance — ${selQtr} ${selYear} · ${treeLevel==='branch'?'Branch View':treeLevel==='team'?'Team View':'Employee View'}${activeFC>0?' (filtered)':''}`} t={t}>
+
+          {/* Level hint */}
+          <div style={{fontSize:12,color:t.muted,marginBottom:12,lineHeight:1.5}}>
+            {treeLevel==='branch'&&'Showing all branches. Click 🏢 to expand a branch and see its teams.'}
+            {treeLevel==='team'&&'Showing all teams under each branch. Click 👥 to expand a team and see its employees.'}
+            {treeLevel==='employee'&&'Showing full tree: branches → teams → employees.'}
+          </div>
+
+          <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr>
+              <TH t={t}>Name</TH>
+              <TH t={t} right>Collected</TH>
+              <TH t={t} right>Target</TH>
+              <TH t={t} right>{selQtr} Target</TH>
+              <TH t={t} right>Variance</TH>
+              <TH t={t} right>Attainment %</TH>
+              <TH t={t} right>Annual %</TH>
+              <TH t={t}>Status</TH>
+            </tr></thead>
+            <tbody>
+            {treeRows.map(row=>{
+              const canExpand=row.hasChildren&&treeLevel!=='employee'&&(
+                (treeLevel==='branch'&&row.nodeType==='branch')||
+                (treeLevel==='team'&&row.nodeType==='team')
+              );
+              const isExpanded=!!expanded[row.key];
+              const indent=row.level*22;
+              const isBranch=row.nodeType==='branch';
+              const isTeam=row.nodeType==='team';
+              const isEmp=row.nodeType==='employee';
+              return(
+                <tr key={row.key} style={{
+                  background:isBranch?t.accent+'15':isTeam?t.surface:'transparent',
+                  borderBottom:isBranch?`2px solid ${t.accent}33`:`1px solid ${t.border}`,
+                }}>
+                  <TD t={t} style={{paddingLeft:10+indent,fontWeight:isBranch?700:isTeam?600:400}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      {/* Expand/collapse toggle */}
+                      {canExpand?(
+                        <button onClick={()=>toggleExpand(row.key)} style={{
+                          background:'none',border:'none',cursor:'pointer',fontSize:11,
+                          color:t.muted,padding:'0 2px',lineHeight:1,flexShrink:0,
+                          transform:isExpanded?'rotate(90deg)':'rotate(0deg)',transition:'transform .15s',
+                        }}>▶</button>
+                      ):(
+                        // spacer to keep alignment
+                        <span style={{display:'inline-block',width:16,flexShrink:0}}/>
+                      )}
+                      <span style={{fontSize:14,flexShrink:0}}>{row.icon}</span>
+                      <span style={{color:isBranch?t.accent:t.text}}>{row.label}</span>
+                      {isEmp&&row.role&&<span style={{fontSize:10,color:t.muted,marginLeft:4}}>{row.role}</span>}
+                      {(isBranch||isTeam)&&<span style={{fontSize:10,color:t.muted,marginLeft:4}}>({row.childCount})</span>}
+                    </div>
+                  </TD>
+                  <TD t={t} mono right bold={isBranch||isTeam} style={{color:isBranch?t.accent:t.text}}>{fmt(row.ytd)}</TD>
+                  <TD t={t} mono right color={t.muted}>{row.at>0?fmt(row.at):'—'}</TD>
+                  <TD t={t} mono right color={t.muted}>{row.qt>0?fmt(row.qt):'—'}</TD>
+                  <TD t={t} mono right bold={isBranch||isTeam} style={{color:row.qt>0?(row.v>=0?t.success:t.danger):t.muted}}>{row.qt>0?((row.v>=0?'+':'')+fmt(row.v)):'—'}</TD>
+                  <TD t={t} mono right bold={isBranch||isTeam} style={{color:row.aq>=100?t.success:row.aq>=75?t.warning:t.danger}}>{row.qt>0?fmtP(row.aq):'—'}</TD>
+                  <TD t={t} mono right color={t.muted}>{row.at>0?fmtP(row.aa):'—'}</TD>
+                  <TD t={t}>{isEmp&&sb(row.st)}</TD>
+                </tr>
+              );
+            })}
+            </tbody>
+          </table></div>
+          {treeRows.length===0&&<div style={{textAlign:'center',padding:32,color:t.muted,fontSize:13}}>No data for selected filters</div>}
+        </Card>
+      </div>
+    </div>}
+
+    {/* ── MONTHLY VIEW ──────────────────────────────────────────────────── */}
+    {view==='monthly'&&<div style={{display:'flex',gap:16}}>
+      <div style={{width:175,flexShrink:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>Filters</span>
+          {activeFC>0&&<Btn t={t} onClick={()=>{setFMonth([]);setFTeam([]);setFBranch([]);}} style={{padding:'2px 7px',fontSize:11}}>Clear</Btn>}
+        </div>
+        {s2FilterOpts.branches.length>0&&<FG label="Branch" t={t}>{s2FilterOpts.branches.map(v=><Chip key={v} label={v} active={fBranch.includes(v)} onClick={()=>tog(fBranch,setFBranch,v)} t={t}/>)}</FG>}
+        {s2FilterOpts.teams.length>0&&<FG label="Team" t={t}>{s2FilterOpts.teams.map(v=><Chip key={v} label={v} active={fTeam.includes(v)} onClick={()=>tog(fTeam,setFTeam,v)} t={t}/>)}</FG>}
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+      <Card title={`Monthly Collections — ${selYear} vs prior years${activeFC>0?' (filtered)':''}`} t={t}>
+        <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead><tr><TH t={t}>Month</TH>{visY.map(y=><TH key={y} t={t} right>{y}</TH>)}<TH t={t} right>vs {selYear-2}</TH><TH t={t} right>vs {selYear-1}</TH></tr></thead>
+          <tbody>
+            {rows.map((row,i)=><tr key={i} style={{background:!row.isMonth?t.surface:'transparent',fontWeight:!row.isMonth?700:400}}>
+              <TD t={t} style={{paddingLeft:row.isMonth?22:10,fontWeight:!row.isMonth?700:400,color:!row.isMonth?t.accent:t.text}}>{row.month}</TD>
+              {visY.map(y=><TD key={y} t={t} mono right bold={!row.isMonth} style={{color:y===curYr?t.text:t.muted}}>{row[y]>0?fmt(row[y]):'—'}</TD>)}
+              <TD t={t} mono right bold={!row.isMonth} style={{color:row[curYr]>0?(row.d1>=0?t.success:t.danger):t.muted}}>{row[curYr]>0?((row.d1>=0?'+':'')+fmt(row.d1)):'—'}</TD>
+              <TD t={t} mono right bold={!row.isMonth} style={{color:row[curYr]>0?(row.d2>=0?t.success:t.danger):t.muted}}>{row[curYr]>0?((row.d2>=0?'+':'')+fmt(row.d2)):'—'}</TD>
+            </tr>)}
+            <tr style={{background:t.accent+'22',fontWeight:700}}>
+              <TD t={t} bold style={{color:t.accent}}>TOTAL</TD>
+              {visY.map(y=>{const tot=MONTHS.reduce((s,m)=>{const r=rows.find(r=>r.month===m&&r.isMonth);return s+(r?r[y]||0:0);},0);return <TD key={y} t={t} mono right bold style={{color:y===curYr?t.text:t.muted}}>{tot>0?fmt(tot):'—'}</TD>;})}
+              <TD t={t}/><TD t={t}/>
+            </tr>
+          </tbody>
+        </table></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginTop:16}}>
+          {['Q1','Q2','Q3','Q4'].map(q=>{const qr=rows.find(r=>r.month===q&&!r.isMonth);const cur=qr?qr[curYr]||0:0;const prev=qr?qr[String(selYear-1)]||0:0;return(
+            <div key={q} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,padding:'12px 14px'}}>
+              <div style={{fontSize:11,fontWeight:700,color:t.muted,marginBottom:6}}>{q} {selYear}</div>
+              <div style={{fontSize:19,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text,marginBottom:4}}>{cur>0?fmt(cur):'—'}</div>
+              {prev>0&&<div style={{fontSize:11,color:(cur-prev)>=0?t.success:t.danger}}>{(cur-prev)>=0?'▲':'▼'} {fmt(Math.abs(cur-prev))} vs {selYear-1}</div>}
+            </div>
+          );})}
+        </div>
+      </Card>
+      </div>
+    </div>}
+
+    {/* ── YEAR COMPARISON ───────────────────────────────────────────────── */}
+    {view==='compare'&&<Card title={`Year-on-Year by ${compareView.charAt(0).toUpperCase()+compareView.slice(1)}`} t={t}>
+      <SmartChart chartId="perf_compare" data={compareData.rows} keys={compareData.dataYears.map((y,i)=>({key:y,name:y,color:COLORS[i%COLORS.length]}))} nameKey="name" height={Math.max(300,compareData.rows.length*32)} defaultType="barH" t={t}/>
+    </Card>}
+
+    {/* ── ORG VIEW ──────────────────────────────────────────────────────── */}
+    {view==='org'&&(()=>{
+      const org5=buildOrg(sheets.s4);
+      const byBranch={};
+      sheets.s4.filter(r=>r.Branch).forEach(r=>{
+        const b=r.Branch;if(!byBranch[b])byBranch[b]={branch:b,region:r.Region||'',members:[]};
+        if(r.Name&&!byBranch[b].members.find(m=>m.name===r.Name.trim())){
+          byBranch[b].members.push({name:r.Name.trim(),role:r.Role||'',team:r.Team||'',reporting:r['Reporting to']||''});
+        }
+      });
+      return(<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
+        {Object.values(byBranch).filter(b=>b.members.some(m=>m.name)).map(b=>(
+          <Card key={b.branch} title={`${b.branch} — ${b.region}`} t={t}>
+            {b.members.sort((a,z)=>isManager(a.role)?-1:isManager(z.role)?1:0).map((m,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',borderBottom:`1px solid ${t.border}`}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:isManager(m.role)?t.accent+'22':'#10b981'+'22',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{isManager(m.role)?'👔':'👤'}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:isManager(m.role)?600:400,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                  <div style={{fontSize:11,color:t.muted}}>{m.role}{m.team?` · ${m.team}`:''}</div>
+                  {m.reporting&&<div style={{fontSize:10,color:t.muted,marginTop:2}}>Reports to: {m.reporting}</div>}
+                </div>
+                <Badge text={m.role||'—'} type={isManager(m.role)?'purple':'green'}/>
+              </div>
+            ))}
+          </Card>
+        ))}
+      </div>);
+    })()}
+
+  </div>);
+}
+
+/* ── Overview Tab ── */
+function OverviewTab({filtered,totalCollected,totalTx,uniqueCustomers,uniqueEmployees,monthlyTrend,byPtype,byRegion,leaderboard,topCustomers,retVsNew,concentration,t,allTx}){
+  const maxC=(topCustomers[0]&&topCustomers[0].value)||1;const maxE=(leaderboard.execs[0]&&leaderboard.execs[0].amount)||1;
+  const tt={background:t.card,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12};
+  const avgDeal=totalTx?totalCollected/totalTx:0;
+  const momG=useMemo(()=>{if(monthlyTrend.length<2)return null;const l=monthlyTrend[monthlyTrend.length-1].amount;const p=monthlyTrend[monthlyTrend.length-2].amount;return p?pct(l-p,p):null;},[monthlyTrend]);
+  const runT=useMemo(()=>{let c=0;return monthlyTrend.map(m=>({...m,cumulative:c+=m.amount}));},[monthlyTrend]);
+  const byPdcP=useMemo(()=>{const m={};filtered.forEach(r=>{const k=r.Ptype||'Unknown';if(!m[k])m[k]={name:k,conv:0,total:0};m[k].total++;if(r.PDCStatus==='Converted')m[k].conv++;});return Object.values(m).filter(x=>x.total>=3).map(x=>({...x,rate:pct(x.conv,x.total)})).sort((a,b)=>b.rate-a.rate);},[filtered]);
+  const byTeam=useMemo(()=>{const m={};filtered.forEach(r=>{const k=r.Team||'Unknown';m[k]=(m[k]||0)+r._amount;});return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([n,v])=>({name:n,value:v}));},[filtered]);
+
+  const aiPrompt=useMemo(()=>{
+    const topC=topCustomers.slice(0,3).map(c=>`${c.name}: AED ${fmt(c.value)}`).join(', ');
+    const topE=leaderboard.execs.slice(0,3).map(e=>`${e.name}: AED ${fmt(e.amount)}`).join(', ');
+    return `You are a senior sales analyst. Analyse this collections dashboard data and provide 5 concise, actionable bullet-point insights for management:\n- Total collected: AED ${fmt(totalCollected)} across ${totalTx} transactions\n- Unique customers: ${uniqueCustomers}\n- Top customers: ${topC}\n- Top executives: ${topE}\n- AMC/Retention: AED ${fmt((retVsNew.find(r=>r.name.includes('AMC'))||{}).value||0)}, New Business: AED ${fmt((retVsNew.find(r=>r.name.includes('New'))||{}).value||0)}\n- Concentration risk: top 3 = ${fmtP(concentration)}\nHighlight trends, risks, and recommendations.`;
+  },[totalCollected,totalTx,uniqueCustomers,topCustomers,leaderboard,retVsNew,concentration]);
+
+  return(<div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:14}}>
+      <KPI label="Total Collected" value={`AED ${fmt(totalCollected)}`} sub={`${fmt(totalTx)} transactions`} t={t}/>
+      <KPI label="Unique Customers" value={fmt(uniqueCustomers)} sub="billed" t={t}/>
+      <KPI label="Active Employees" value={fmt(uniqueEmployees)} t={t}/>
+      <KPI label="Avg Deal Size" value={`AED ${fmt(avgDeal)}`} sub={momG!==null?`MoM: ${momG>=0?'+':''}${fmtP(momG)}`:undefined} t={t} ac={momG!==null?(momG>=0?t.success:t.danger):undefined}/>
+    </div>
+    {concentration>50&&<div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:8,padding:'10px 16px',color:'#991b1b',fontSize:13,marginBottom:14}}>⚠️ Concentration risk: top 3 customers = <strong>{fmtP(concentration)}</strong> of total</div>}
+    <ChartCard title="Monthly Collections Trend" chartId="monthly_trend" data={monthlyTrend} keys={[{key:'amount',name:'Collections',color:t.accent}]} nameKey="label" height={200} defaultType="area" t={t} style={{marginBottom:14}}/>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+      <ChartCard title="Cumulative Collections" chartId="cumulative" data={runT} keys={[{key:'cumulative',name:'Cumulative',color:'#10b981'}]} nameKey="label" height={180} defaultType="area" t={t}/>
+      <ChartCard title="Retention vs New Business" chartId="retention_new" data={retVsNew.filter(d=>d.value>0)} keys={retVsNew.filter(d=>d.value>0).map((d,i)=>({key:'value',name:d.name,color:COLORS[i]}))} height={200} defaultType="donut" t={t}/>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+      <ChartCard title="By Product Type" chartId="by_ptype" data={byPtype.slice(0,8)} keys={[{key:'value',name:'Amount',color:t.accent}]} height={220} defaultType="barH" t={t}/>
+      <ChartCard title="By Region" chartId="by_region" data={byRegion} keys={[{key:'value',name:'Amount',color:t.accent}]} height={220} defaultType="bar" t={t}/>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+      <Card title="Top 10 Customers" t={t}>{topCustomers.map((c,i)=>(<div key={i} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span style={{display:'flex',gap:8,overflow:'hidden'}}><span style={{fontSize:11,fontWeight:700,color:t.muted,width:22,flexShrink:0}}>#{i+1}</span><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</span></span><span style={{fontSize:11,color:t.muted,flexShrink:0,marginLeft:8}}>AED {fmt(c.value)}</span></div><MiniBar value={c.value} max={maxC} color={COLORS[i%COLORS.length]} t={t}/></div>))}</Card>
+      <Card title="Executive Leaderboard" t={t}>{leaderboard.execs.slice(0,10).map((e,i)=>(<div key={i} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span style={{display:'flex',gap:8}}><span style={{fontSize:11,fontWeight:700,color:t.muted,width:22}}>#{i+1}</span>{e.name}</span><span style={{fontSize:11,color:t.muted}}>AED {fmt(e.amount)}</span></div><MiniBar value={e.amount} max={maxE} color={COLORS[i%COLORS.length]} t={t}/></div>))}</Card>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+      <Card title="PDC Conversion by Product" t={t}>{byPdcP.slice(0,8).map((p,i)=>(<div key={i} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>{p.name}</span><span style={{color:p.rate>=70?t.success:p.rate>=50?t.warning:t.danger,fontFamily:"'DM Mono',monospace",fontSize:11}}>{fmtP(p.rate)} ({p.conv}/{p.total})</span></div><MiniBar value={p.rate} max={100} color={p.rate>=70?'#10b981':p.rate>=50?'#f59e0b':'#ef4444'} t={t}/></div>))}</Card>
+      <ChartCard title="By Team" chartId="by_team" data={byTeam} keys={[{key:'value',name:'Amount',color:t.accent}]} height={220} defaultType="barH" t={t}/>
+    </div>
+    <AIInsights prompt={aiPrompt} t={t} label="AI Overview Insights"/>
+  </div>);
+}
+
+/* ── Analysis Tab ── */
+function AnalysisTab({filtered,yoyData,yoyYears,heatmapData,getHeatColor,slippage,t,dark}){
+  const YCOL=['#3b82f6','#f43f5e','#f59e0b','#10b981','#8b5cf6'];
+  const tt={background:t.card,border:`1px solid ${t.border}`,borderRadius:8,fontSize:12};
+  const vel=useMemo(()=>{const m={};filtered.forEach(r=>{if(!m[r.Employee])m[r.Employee]={name:r.Employee,total:0,months:new Set()};m[r.Employee].total+=r._amount;m[r.Employee].months.add(`${r._year}-${r.Month}`);});return Object.values(m).map(e=>({name:e.name,vel:e.months.size?e.total/(e.months.size*22):0})).sort((a,b)=>b.vel-a.vel).slice(0,10);},[filtered]);
+  const sSum=useMemo(()=>{const m={};slippage.forEach(s=>{if(!m[s.exec])m[s.exec]={name:s.exec,proj:0,act:0};m[s.exec].proj+=s.projected;m[s.exec].act+=s.actual;});return Object.values(m).map(e=>({...e,p:e.proj?pct(e.act,e.proj):0})).sort((a,b)=>a.p-b.p);},[slippage]);
+  return(<div>
+    <ChartCard title="Year-on-Year Comparison" chartId="yoy_comparison" data={yoyData} keys={yoyYears.map((y,i)=>({key:y,name:y,color:YCOL[i%YCOL.length]}))} nameKey="month" height={220} defaultType="line" t={t} style={{marginBottom:14}}/>
+    <Card title="Seasonality Heatmap" t={t} style={{marginBottom:14}}><div style={{overflowX:'auto'}}><table style={{borderCollapse:'separate',borderSpacing:3}}><thead><tr><th style={{fontSize:11,color:t.muted,paddingRight:10,paddingBottom:6,textAlign:'left'}}>Year</th>{MONTHS.map(m=><th key={m} style={{fontSize:10,color:t.muted,fontWeight:500,textAlign:'center',minWidth:50,paddingBottom:6}}>{m}</th>)}</tr></thead><tbody>{heatmapData.map((row,i)=>(<tr key={i}><td style={{fontSize:12,fontWeight:600,color:t.text,paddingRight:10}}>{row.year}</td>{MONTHS.map(m=>{const v=row[m]||0;return(<td key={m} title={`AED ${fmt(v)}`}><div style={{background:getHeatColor(v),borderRadius:4,padding:'5px 3px',textAlign:'center',fontSize:9,fontFamily:"'DM Mono',monospace",color:v>0?(dark?'#e2e8f0':'#1e293b'):t.muted,minWidth:48}}>{v>0?`${(v/1000).toFixed(0)}K`:''}</div></td>);})}  </tr>))}</tbody></table></div></Card>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+      <Card title="Collection Velocity (AED/working day)" t={t}>{vel.map((e,i)=>(<div key={i} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>{e.name}</span><span style={{fontSize:11,color:t.muted}}>AED {fmt(e.vel)}/day</span></div><MiniBar value={e.vel} max={(vel[0]&&vel[0].vel)||1} color={COLORS[i%COLORS.length]} t={t}/></div>))}</Card>
+      <Card title="Slippage: Projection vs Actual" t={t}><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr>{['Executive','Projected','Actual','Attainment'].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead><tbody>{sSum.slice(0,10).map((s,i)=>(<tr key={i}><TD t={t}>{s.name}</TD><TD t={t} mono>{fmt(s.proj)}</TD><TD t={t} mono>{fmt(s.act)}</TD><TD t={t}><Badge text={`${s.p.toFixed(0)}%`} type={s.p>=100?'green':s.p>=75?'amber':'red'}/></TD></tr>))}</tbody></table></div></Card>
+    </div>
+  </div>);
+}
+
+
+/* ── Reverse Calculator Tab ── */
+function ReverseCalcTab({allTx,targets,sheets,t,dark}){
+  const curYear=new Date().getFullYear();
+  const availYears=useMemo(()=>[...new Set(allTx.map(r=>r._year).filter(Boolean))].sort((a,b)=>b-a),[allTx]);
+
+  // Executives from Sheet4 (non-managers only)
+  const executives=useMemo(()=>{
+    const org=buildOrg(sheets.s4);
+    return org.list.filter(p=>p.name&&(p.role||'').toLowerCase().includes('sales consultant')).sort((a,b)=>a.name.localeCompare(b.name));
+  },[sheets.s4]);
+
+  const[selExec,setSelExec]=useState('');
+  const[selYear,setSelYear]=useState(curYear);
+  const[avgDeal,setAvgDeal]=useState('');
+  const[convRate,setConvRate]=useState('');
+  const[daysToClose,setDaysToClose]=useState('');
+
+  // Collected YTD for selected exec+year from Sheet2
+  const collectedYTD=useMemo(()=>{
+    if(!selExec)return 0;
+    return allTx.filter(r=>String(r._year)===String(selYear)&&r.Employee&&r.Employee.trim()===selExec).reduce((s,r)=>s+r._amount,0);
+  },[allTx,selExec,selYear]);
+
+  // Annual target from targets store
+  const annualTarget=useMemo(()=>parseFloat(targets[`target_${selExec}_${selYear}`]||0),[targets,selExec,selYear]);
+  const remaining=Math.max(0,annualTarget-collectedYTD);
+
+  // Working days left in year (rough: from today to Dec 31, minus weekends)
+  const workingDaysLeft=useMemo(()=>{
+    const today=new Date();
+    const yearEnd=new Date(selYear,11,31);
+    if(yearEnd<today)return 0;
+    let count=0;const d=new Date(today);
+    while(d<=yearEnd){const day=d.getDay();if(day!==0&&day!==6)count++;d.setDate(d.getDate()+1);}
+    return count;
+  },[selYear]);
+
+  // Calc
+  const calc=useMemo(()=>{
+    const ad=parseFloat(avgDeal)||0;
+    const cr=parseFloat(convRate)||0;
+    const dtc=parseFloat(daysToClose)||0;
+    if(!ad||!cr||!dtc)return null;
+    const crFrac=cr/100;
+    const totalLeads=remaining>0?Math.ceil(remaining/(ad*crFrac)):0;
+    const effectiveDays=Math.max(1,workingDaysLeft-dtc);
+    const leadsPerDay=remaining>0?totalLeads/effectiveDays:0;
+    const dealsNeeded=remaining>0?Math.ceil(remaining/ad):0;
+    const pipelineNeeded=remaining>0?dealsNeeded/crFrac:0;
+    return{totalLeads,leadsPerDay,dealsNeeded,pipelineNeeded,effectiveDays,remaining,annualTarget,collectedYTD};
+  },[avgDeal,convRate,daysToClose,remaining,workingDaysLeft,annualTarget,collectedYTD]);
+
+  const inp={background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'9px 12px',fontSize:14,color:t.text,fontFamily:"'DM Sans',sans-serif",width:'100%'};
+  const lbl={fontSize:12,fontWeight:600,color:t.muted,marginBottom:6,display:'block'};
+
+  const attPct=annualTarget?pct(collectedYTD,annualTarget):0;
+  const statColor=attPct>=100?t.success:attPct>=75?t.warning:t.danger;
+
+  return(<div style={{maxWidth:860,margin:'0 auto'}}>
+    <div style={{marginBottom:20}}>
+      <div style={{fontSize:18,fontWeight:700,color:t.text,marginBottom:4}}>Reverse Calculator</div>
+      <div style={{fontSize:13,color:t.muted}}>Find out how many leads an executive needs per day to hit their remaining target.</div>
+    </div>
+
+    {/* Step 1: Select executive */}
+    <Card title="Step 1 — Select Executive" t={t} style={{marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        <div>
+          <label style={lbl}>Sales Executive</label>
+          <select value={selExec} onChange={e=>setSelExec(e.target.value)} style={inp}>
+            <option value="">— Select executive —</option>
+            {executives.map(e=><option key={e.name} value={e.name}>{e.name}{e.teams&&e.teams[0]?' · '+e.teams[0]:''}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Year</label>
+          <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} style={inp}>
+            {(availYears.length?availYears:[curYear,curYear-1]).map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
+      {selExec&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:16}}>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Annual Target</div>
+          <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{annualTarget>0?`AED ${fmt(annualTarget)}`:'Not set'}</div>
+        </div>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Collected YTD</div>
+          <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.success}}>AED {fmt(collectedYTD)}</div>
+        </div>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Remaining</div>
+          <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:remaining>0?t.danger:t.success}}>{remaining>0?`AED ${fmt(remaining)}`:'Target met ✓'}</div>
+          {annualTarget>0&&<div style={{marginTop:6}}>
+            <div style={{background:t.border,borderRadius:4,height:5}}><div style={{height:5,borderRadius:4,background:statColor,width:`${Math.min(100,attPct)}%`,transition:'width .3s'}}/></div>
+            <div style={{fontSize:10,color:statColor,marginTop:3,fontWeight:600}}>{fmtP(attPct)} attained</div>
+          </div>}
+        </div>
+      </div>}
+    </Card>
+
+    {/* Step 2: Inputs */}
+    <Card title="Step 2 — Deal Assumptions" t={t} style={{marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
+        <div>
+          <label style={lbl}>Average Deal Size (AED)</label>
+          <input type="number" min="0" value={avgDeal} onChange={e=>setAvgDeal(e.target.value)} placeholder="e.g. 15000" style={inp}/>
+          <div style={{fontSize:11,color:t.muted,marginTop:4}}>Typical contract value per closed deal</div>
+        </div>
+        <div>
+          <label style={lbl}>Lead-to-Deal Conversion Rate (%)</label>
+          <input type="number" min="0" max="100" value={convRate} onChange={e=>setConvRate(e.target.value)} placeholder="e.g. 25" style={inp}/>
+          <div style={{fontSize:11,color:t.muted,marginTop:4}}>% of leads that convert to a closed deal</div>
+        </div>
+        <div>
+          <label style={lbl}>Average Days to Close</label>
+          <input type="number" min="1" value={daysToClose} onChange={e=>setDaysToClose(e.target.value)} placeholder="e.g. 30" style={inp}/>
+          <div style={{fontSize:11,color:t.muted,marginTop:4}}>Working days from first contact to payment</div>
+        </div>
+      </div>
+      {workingDaysLeft>0&&<div style={{marginTop:14,padding:'8px 12px',background:t.surface,borderRadius:8,fontSize:12,color:t.muted}}>
+        📅 <strong style={{color:t.text}}>{workingDaysLeft}</strong> working days remaining in {selYear}
+        {parseFloat(daysToClose)>0&&<span> · <strong style={{color:t.text}}>{Math.max(0,workingDaysLeft-parseFloat(daysToClose))}</strong> effective days (after subtracting close cycle)</span>}
+      </div>}
+    </Card>
+
+    {/* Step 3: Results */}
+    {calc&&remaining>0&&<Card title="Step 3 — What You Need" t={t} style={{marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:14,marginBottom:16}}>
+        <div style={{background:t.accent+'18',border:`1px solid ${t.accent}44`,borderRadius:10,padding:'18px 20px'}}>
+          <div style={{fontSize:12,color:t.muted,marginBottom:6,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px'}}>Total Leads Required</div>
+          <div style={{fontSize:40,fontWeight:800,fontFamily:"'DM Mono',monospace",color:t.accent,lineHeight:1}}>{fmt(calc.totalLeads)}</div>
+          <div style={{fontSize:12,color:t.muted,marginTop:8}}>to collect AED {fmt(calc.remaining)} at {convRate}% conversion × AED {fmt(parseFloat(avgDeal))} avg deal</div>
+        </div>
+        <div style={{background:'#10b981'+'18',border:`1px solid ${'#10b981'}44`,borderRadius:10,padding:'18px 20px'}}>
+          <div style={{fontSize:12,color:t.muted,marginBottom:6,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px'}}>Leads Needed Per Day</div>
+          <div style={{fontSize:40,fontWeight:800,fontFamily:"'DM Mono',monospace",color:'#10b981',lineHeight:1}}>{calc.leadsPerDay<10?calc.leadsPerDay.toFixed(1):Math.ceil(calc.leadsPerDay)}</div>
+          <div style={{fontSize:12,color:t.muted,marginTop:8}}>across {calc.effectiveDays} effective working days remaining</div>
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12}}>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Deals Needed to Close</div>
+          <div style={{fontSize:22,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(calc.dealsNeeded)}</div>
+          <div style={{fontSize:11,color:t.muted,marginTop:2}}>at AED {fmt(parseFloat(avgDeal))} per deal</div>
+        </div>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Pipeline Size Required</div>
+          <div style={{fontSize:22,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(Math.ceil(calc.pipelineNeeded))}</div>
+          <div style={{fontSize:11,color:t.muted,marginTop:2}}>total leads in pipeline to yield {calc.dealsNeeded} deals</div>
+        </div>
+      </div>
+      <div style={{marginTop:14,background:t.surface,border:`1px solid ${t.accent}33`,borderRadius:8,padding:'12px 16px',fontSize:13,color:t.accent,lineHeight:1.6}}>
+        💡 <strong>{selExec}</strong> needs to generate <strong>{calc.leadsPerDay<10?calc.leadsPerDay.toFixed(1):Math.ceil(calc.leadsPerDay)} new leads every working day</strong> for the next {calc.effectiveDays} days to close {fmt(calc.dealsNeeded)} deals and collect the remaining <strong>AED {fmt(calc.remaining)}</strong> of their {selYear} target.
+      </div>
+    </Card>}
+
+    {calc&&remaining===0&&selExec&&<div style={{textAlign:'center',padding:40,background:t.success+'18',border:`1px solid ${t.success}44`,borderRadius:12}}>
+      <div style={{fontSize:40,marginBottom:12}}>🎉</div>
+      <div style={{fontSize:20,fontWeight:700,color:t.success,marginBottom:6}}>{selExec} has hit their target!</div>
+      <div style={{fontSize:14,color:t.muted}}>AED {fmt(collectedYTD)} collected vs AED {fmt(annualTarget)} target</div>
+    </div>}
+
+    {!selExec&&<div style={{textAlign:'center',padding:60,color:t.muted,fontSize:13}}>
+      <div style={{fontSize:40,marginBottom:12}}>🧮</div>
+      Select an executive above to begin
+    </div>}
+  </div>);
+}
+
+/* ── Main App ── */
+function App(){
+  const[dark,setDark]=useState(()=>{try{return localStorage.getItem('ciq_dark')==='1';}catch(_e){return false;}});
+  const[tab,setTab]=useState('overview');
+  const[sheets,setSheets]=useState({s1:[],s2:[],s3:[],s4:[],s5:[]});
+  const[sheetMeta,setSheetMeta]=useState({s1:null,s2:null,s3:null,s4:null,s5:null});
+  const[targets,setTargets]=useState({});
+  const[booting,setBooting]=useState(true);
+  const[credit,setCredit]=useState(DEFAULT_CREDIT);
+  const[locked,setLocked]=useState(false);
+  const[hasPwd,setHasPwd]=useState(false);
+  const[tabUnlocked,setTabUnlocked]=useState(false);
+  const[unmapped,setUnmapped]=useState([]);
+
+  const[filters,setFilters]=useState({pdcStatus:'Both',region:[],branch:[],team:[],employee:[],year:[],quarter:[],month:[],ptype:[],stream:[]});
+  const t=dark?THEMES.dark:THEMES.light;
+
+  useEffect(()=>{document.body.style.background=t.bg;document.body.style.color=t.text;},[t]);
+  useEffect(()=>{try{localStorage.setItem('ciq_dark',dark?'1':'0');}catch(_e){};},[dark]);
+
+  useEffect(()=>{
+    async function boot(){
+      try{
+        const[s1,s2,s3,s4,s5,meta,tg,pwd,cred]=await Promise.all([dbGet('s1'),dbGet('s2'),dbGet('s3'),dbGet('s4'),dbGet('s5'),dbGet('sheetMeta'),dbGet('targets'),dbGet('pwd_hash'),dbGet('credit')]);
+        const loaded={s1:s1||[],s2:s2||[],s3:s3||[],s4:s4||[],s5:s5||[]};
+        setSheets(loaded);if(meta)setSheetMeta(meta);if(tg)setTargets(tg);
+        compUnmapped(loaded);
+        if(pwd){setHasPwd(true);}
+      }catch(e){console.error(e);}
+      setBooting(false);
+    }
+    boot();
+  },[]);
+
+  function compUnmapped(s){const s4n=new Set(s.s4.map(r=>r.Name&&r.Name.trim()).filter(Boolean));const txn=[...new Set([...s.s1,...s.s2].map(r=>r.Employee&&r.Employee.trim()).filter(Boolean))];setUnmapped(txn.filter(n=>n&&!s4n.has(n)));}
+
+  const saveTargets=useCallback(async(tg)=>{setTargets(tg);try{await dbSet('targets',tg);}catch(e){}},[]);
+
+  const onFileUpload=useCallback((k,file)=>{if(!file)return;const reader=new FileReader();reader.onload=async e=>{const data=parseCSV(e.target.result);const ts=new Date().toLocaleString();setSheets(prev=>{const u={...prev,[k]:data};compUnmapped(u);return u;});setSheetMeta(prev=>{const u={...prev,[k]:`${file.name} · ${ts}`};dbSet('sheetMeta',u).catch(()=>{});return u;});try{await dbSet(k,data);}catch(err){console.error(err);}};reader.readAsText(file);},[]);
+  const onClearSheet=useCallback(async(k)=>{setSheets(prev=>{const u={...prev,[k]:[]};compUnmapped(u);return u;});setSheetMeta(prev=>{const u={...prev,[k]:null};dbSet('sheetMeta',u).catch(()=>{});return u;});try{await dbDel(k);}catch(_e){}},[]);
+
+  const allTx=useMemo(()=>[...sheets.s1,...sheets.s2].map(r=>({...r,_amount:parseAmt(r.Collection),_year:parseYear(r.yy)})),[sheets]);
+  const filtered=useMemo(()=>allTx.filter(r=>{
+    if(filters.pdcStatus!=='Both'&&r.PDCStatus!==filters.pdcStatus)return false;
+    if(filters.region.length&&!filters.region.includes(r.Region))return false;
+    if(filters.branch.length&&!filters.branch.includes(r.Branch))return false;
+    if(filters.team.length&&!filters.team.includes(r.Team))return false;
+    if(filters.employee.length&&!filters.employee.includes(r.Employee))return false;
+    if(filters.year.length&&!filters.year.includes(String(r._year)))return false;
+    if(filters.quarter.length&&!filters.quarter.some(q=>Q_MONTHS[q]&&Q_MONTHS[q].includes(r.Month)))return false;
+    if(filters.month.length&&!filters.month.includes(r.Month))return false;
+    if(filters.ptype.length&&!filters.ptype.includes(r.Ptype))return false;
+    if(filters.stream.length&&!filters.stream.includes(r.Stream))return false;
+    return true;
+  }),[allTx,filters]);
+
+  const dims=useMemo(()=>({regions:[...new Set([...allTx.map(r=>r.Region),...sheets.s4.map(r=>r.Region)].filter(Boolean))].sort(),branches:[...new Set([...allTx.map(r=>r.Branch),...sheets.s4.map(r=>r.Branch)].filter(Boolean))].sort(),teams:[...new Set([...allTx.map(r=>r.Team),...sheets.s4.map(r=>r.Team)].filter(Boolean))].sort(),years:[...new Set(allTx.map(r=>String(r._year)).filter(v=>v&&v!=='null'))].sort(),months:MONTHS.filter(m=>allTx.some(r=>r.Month===m)),ptypes:[...new Set(allTx.map(r=>r.Ptype).filter(Boolean))].sort(),streams:[...new Set(allTx.map(r=>r.Stream).filter(Boolean))].sort()}),[allTx]);
+
+  const toggleF=(k,v)=>setFilters(f=>({...f,[k]:f[k].includes(v)?f[k].filter(x=>x!==v):[...f[k],v]}));
+  const clearF=()=>setFilters({pdcStatus:'Both',region:[],branch:[],team:[],employee:[],year:[],quarter:[],month:[],ptype:[],stream:[]});
+  const aFC=Object.values(filters).reduce((s,v)=>s+(Array.isArray(v)?v.length:v!=='Both'?1:0),0);
+
+  const totalCollected=useMemo(()=>filtered.reduce((s,r)=>s+r._amount,0),[filtered]);
+  const totalTx=filtered.length;
+  const uniqueCustomers=useMemo(()=>new Set(filtered.map(r=>r.Customer)).size,[filtered]);
+  const uniqueEmployees=useMemo(()=>new Set(filtered.map(r=>r.Employee)).size,[filtered]);
+  const monthlyTrend=useMemo(()=>{const m={};filtered.forEach(r=>{const k=`${r._year}-${r.Month}`;if(!m[k])m[k]={label:`${r.Month} ${r._year}`,amount:0,month:r.Month,year:r._year};m[k].amount+=r._amount;});return Object.values(m).sort((a,b)=>a.year!==b.year?a.year-b.year:MONTHS.indexOf(a.month)-MONTHS.indexOf(b.month));},[filtered]);
+  const byPtype=useMemo(()=>{const m={};filtered.forEach(r=>{m[r.Ptype]=(m[r.Ptype]||0)+r._amount;});return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([n,v])=>({name:n,value:v}));},[filtered]);
+  const byRegion=useMemo(()=>{const m={};filtered.forEach(r=>{m[r.Region]=(m[r.Region]||0)+r._amount;});return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([n,v])=>({name:n,value:v}));},[filtered]);
+  const topCustomers=useMemo(()=>{const m={};filtered.forEach(r=>{m[r.Customer]=(m[r.Customer]||0)+r._amount;});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,v])=>({name:n,value:v}));},[filtered]);
+  const leaderboard=useMemo(()=>{const org4=buildOrg(sheets.s4);const s4m={};org4.list.forEach(p=>{s4m[p.name]=p;});const em={},mm={};filtered.forEach(r=>{const emp=r.Employee&&r.Employee.trim();const s4=s4m[emp];if(!s4)return;if(isManager(s4.role||s4.Role)){if(!mm[emp])mm[emp]={name:emp,amount:0};mm[emp].amount+=r._amount;}else{if(!em[emp])em[emp]={name:emp,amount:0};em[emp].amount+=r._amount;}});return{execs:Object.values(em).sort((a,b)=>b.amount-a.amount),mgrs:Object.values(mm).sort((a,b)=>b.amount-a.amount)};},[filtered,sheets.s4]);
+  const retVsNew=useMemo(()=>{let ret=0,nb=0,oth=0;filtered.forEach(r=>{if(r.Stream&&r.Stream.toLowerCase().includes('amc'))ret+=r._amount;else if(r.Stream&&r.Stream.toLowerCase().includes('new'))nb+=r._amount;else oth+=r._amount;});return [{name:'AMC / Retention',value:ret},{name:'New Business',value:nb},{name:'Other',value:oth}];},[filtered]);
+  const concentration=useMemo(()=>{const t3=topCustomers.slice(0,3).reduce((s,c)=>s+c.value,0);return pct(t3,totalCollected);},[topCustomers,totalCollected]);
+  const yoyYears=useMemo(()=>[...new Set(filtered.map(r=>String(r._year)).filter(v=>v&&v!=='null'))].sort(),[filtered]);
+  const yoyData=useMemo(()=>MONTHS.map(m=>{const e={month:m};yoyYears.forEach(y=>{e[y]=filtered.filter(r=>r.Month===m&&String(r._year)===y).reduce((s,r)=>s+r._amount,0);});return e;}),[filtered,yoyYears]);
+  const heatmapData=useMemo(()=>yoyYears.map(y=>{const row={year:y};MONTHS.forEach(m=>{row[m]=filtered.filter(r=>r.Month===m&&String(r._year)===y).reduce((s,r)=>s+r._amount,0);});return row;}),[filtered,yoyYears]);
+  const maxHeat=useMemo(()=>Math.max(...[].concat.apply([],heatmapData.map(r=>MONTHS.map(m=>r[m]||0))),1),[heatmapData]);
+  const getHeatColor=v=>{const ratio=v/maxHeat;if(ratio===0)return t.surface;if(ratio<0.25)return dark?'#1e3a5f':'#dbeafe';if(ratio<0.5)return dark?'#1e40af':'#93c5fd';if(ratio<0.75)return dark?'#2563eb':'#3b82f6';return dark?'#60a5fa':'#1d4ed8';};
+  const pipeline=useMemo(()=>{let as=0,un=0;const bE={};sheets.s3.forEach(r=>{const a=parseAmt(r['Collection Amount']);const ex=r.Executive||'Unknown';if(!bE[ex])bE[ex]={name:ex,assured:0,unassured:0};if(HIGH_CONF.has(r['Collection Type'])){as+=a;bE[ex].assured+=a;}if(LOW_CONF.has(r['Collection Type'])){un+=a;bE[ex].unassured+=a;}});return{assured:as,unassured:un,byExec:Object.values(bE).sort((a,b)=>(b.assured+b.unassured)-(a.assured+a.unassured))};},[sheets.s3]);
+  const slippage=useMemo(()=>{const act={};sheets.s2.forEach(r=>{const k=`${r.Employee}|${r.Month}`;act[k]=(act[k]||0)+parseAmt(r.Collection);});return sheets.s3.map(r=>({exec:r.Executive,month:r.Month,projected:parseAmt(r['Collection Amount']),actual:act[`${r.Executive}|${r.Month}`]||0})).filter(r=>r.projected>0);},[sheets.s2,sheets.s3]);
+
+  const hasData=sheets.s1.length>0||sheets.s2.length>0;
+  const TABS=[['overview','Overview'],['analysis','Analysis'],['performance','Performance'],['pipeline','Pipeline'],['commission','Commission'],['support','Renewals Planning'],['reverse','🧮 Reverse Calc'],['targets','Targets'],['settings','⚙ Settings'],['security','🔐 Security']];
+
+  if(booting)return(<div style={{minHeight:'100vh',background:t.bg,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16}}><div className="spin" style={{fontSize:36,color:t.accent}}>⟳</div><div style={{color:t.muted,fontSize:14}}>Loading saved data...</div></div>);
+  if(locked)return <PasswordGate t={t} onUnlock={()=>setLocked(false)}/>;
+
+  return(<div style={{minHeight:'100vh',background:t.bg,color:t.text}}>
+    <div style={{background:t.card,borderBottom:`1px solid ${t.border}`,padding:'0 20px',display:'flex',alignItems:'center',height:52,position:'sticky',top:0,zIndex:100}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginRight:20,whiteSpace:'nowrap',flexShrink:0}}>
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="28" height="28" rx="7" fill={t.accent} opacity="0.15"/>
+          <rect x="5" y="16" width="4" height="7" rx="1.5" fill={t.accent}/>
+          <rect x="12" y="11" width="4" height="12" rx="1.5" fill={t.accent}/>
+          <rect x="19" y="6" width="4" height="17" rx="1.5" fill={t.accent}/>
+          <path d="M7 13 L14 9 L21 4" stroke={t.accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.6"/>
+          <circle cx="21" cy="4" r="2" fill={t.accent}/>
+        </svg>
+        <span style={{fontSize:15,fontWeight:700,color:t.accent}}>Focus Dashboard</span>
+      </div>
+      <div style={{display:'flex',flex:1,overflowX:'auto'}}>
+        {TABS.map(([k,l])=>(<button key={k} onClick={()=>setTab(k)} style={{background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:600,color:tab===k?t.accent:t.muted,borderBottom:`2px solid ${tab===k?t.accent:'transparent'}`,padding:'0 12px',height:52,whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif"}}>{l}</button>))}
+      </div>
+      <div style={{display:'flex',gap:8,alignItems:'center',marginLeft:'auto',flexShrink:0}}>
+        {/* Credit label */}
+        <div style={{textAlign:'right',marginRight:4}}>
+          <div style={{fontSize:11,fontWeight:600,color:t.text,whiteSpace:'nowrap'}}>{credit.name}</div>
+          <div style={{fontSize:10,color:t.muted,whiteSpace:'nowrap'}}>{credit.email}</div>
+        </div>
+        {aFC>0&&<span style={{fontSize:11,background:t.accent,color:'#fff',borderRadius:10,padding:'2px 7px',fontWeight:700}}>{aFC}</span>}
+        <Btn t={t} onClick={()=>setDark(d=>!d)} style={{padding:'5px 10px',fontSize:12}}>{dark?'☀️':'🌙'}</Btn>
+        {hasPwd&&<Btn t={t} onClick={()=>{setLocked(true);setTabUnlocked(false);}} style={{padding:'5px 10px',fontSize:12}}>🔒</Btn>}
+      </div>
+    </div>
+
+    <div style={{padding:20,maxWidth:1600,margin:'0 auto'}}>
+      {unmapped.length>0&&<div style={{background:'#fef3c7',border:'1px solid #fcd34d',borderRadius:8,padding:'10px 16px',color:'#92400e',fontSize:13,marginBottom:14}}>⚠️ <strong>Unmapped ({unmapped.length}):</strong> {unmapped.slice(0,5).join(', ')}{unmapped.length>5?` +${unmapped.length-5} more`:''}</div>}
+
+      {tab==='settings'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="⚙ Settings" onUnlock={()=>setTabUnlocked(true)}/>:<SettingsTab sheets={sheets} sheetMeta={sheetMeta} onFileUpload={onFileUpload} onClearSheet={onClearSheet} t={t}/>)}
+      {tab==='security'&&<SecurityTab t={t} onLock={()=>{setLocked(true);setTabUnlocked(false);}} credit={credit} onSaveCredit={async(c)=>{setCredit(c);await dbSet('credit',c);}}/>}
+      {tab==='targets'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="Targets" onUnlock={()=>setTabUnlocked(true)}/>:<TargetsTab sheets={sheets} targets={targets} saveTargets={saveTargets} t={t}/>)}
+      {tab==='commission'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="Commission" onUnlock={()=>setTabUnlocked(true)}/>:<CommissionTab sheets={sheets} targets={targets} t={t} dark={dark}/>)}
+      {tab==='reverse'&&<ReverseCalcTab allTx={allTx} targets={targets} sheets={sheets} t={t} dark={dark}/>}
+      {tab==='support'&&<SupportPlanningTab sheets={sheets} targets={targets} saveTargets={saveTargets} t={t}/>}
+      {tab==='pipeline'&&<PipelineTab s3={sheets.s3} sheets={sheets} t={t} dark={dark}/>}
+      {tab==='performance'&&<PerformanceTab allTx={allTx} targets={targets} sheets={sheets} t={t}/>}
+
+      {(tab==='overview'||tab==='analysis')&&!hasData&&<div style={{textAlign:'center',padding:80,color:t.muted}}><div style={{fontSize:48,marginBottom:16}}>📊</div><div style={{fontSize:18,fontWeight:600,color:t.text,marginBottom:8}}>No data loaded</div><div style={{fontSize:14,marginBottom:20}}>Go to Settings to upload your CSV files.</div><Btn primary t={t} onClick={()=>setTab('settings')}>Go to Settings</Btn></div>}
+
+      {(tab==='overview'||tab==='analysis')&&hasData&&<div style={{display:'flex',gap:16}}>
+        <div style={{width:195,flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <span style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>Filters</span>
+            {aFC>0&&<Btn t={t} onClick={clearF} style={{padding:'2px 7px',fontSize:11}}>Clear</Btn>}
+          </div>
+          <FG label="PDC Status" t={t}>{['Both','Converted','UnConverted'].map(v=><Chip key={v} label={v} active={filters.pdcStatus===v} onClick={()=>setFilters(f=>({...f,pdcStatus:v}))} t={t}/>)}</FG>
+          <FG label="Year" t={t}>{dims.years.map(v=><Chip key={v} label={v} active={filters.year.includes(v)} onClick={()=>toggleF('year',v)} t={t}/>)}</FG>
+          <FG label="Quarter" t={t}>{['Q1','Q2','Q3','Q4'].map(v=><Chip key={v} label={v} active={filters.quarter.includes(v)} onClick={()=>toggleF('quarter',v)} t={t}/>)}</FG>
+          <FG label="Month" t={t}>{dims.months.map(v=><Chip key={v} label={v} active={filters.month.includes(v)} onClick={()=>toggleF('month',v)} t={t}/>)}</FG>
+          <FG label="Region" t={t}>{dims.regions.map(v=><Chip key={v} label={v} active={filters.region.includes(v)} onClick={()=>toggleF('region',v)} t={t}/>)}</FG>
+          <FG label="Branch" t={t}>{dims.branches.map(v=><Chip key={v} label={v} active={filters.branch.includes(v)} onClick={()=>toggleF('branch',v)} t={t}/>)}</FG>
+          <FG label="Team" t={t}>{dims.teams.map(v=><Chip key={v} label={v} active={filters.team.includes(v)} onClick={()=>toggleF('team',v)} t={t}/>)}</FG>
+          <FG label="Product" t={t}>{dims.ptypes.map(v=><Chip key={v} label={v} active={filters.ptype.includes(v)} onClick={()=>toggleF('ptype',v)} t={t}/>)}</FG>
+          <FG label="Stream" t={t}>{dims.streams.map(v=><Chip key={v} label={v} active={filters.stream.includes(v)} onClick={()=>toggleF('stream',v)} t={t}/>)}</FG>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          {tab==='overview'&&<OverviewTab filtered={filtered} totalCollected={totalCollected} totalTx={totalTx} uniqueCustomers={uniqueCustomers} uniqueEmployees={uniqueEmployees} monthlyTrend={monthlyTrend} byPtype={byPtype} byRegion={byRegion} leaderboard={leaderboard} topCustomers={topCustomers} retVsNew={retVsNew} concentration={concentration} t={t} allTx={allTx}/>}
+          {tab==='analysis'&&<AnalysisTab filtered={filtered} yoyData={yoyData} yoyYears={yoyYears} heatmapData={heatmapData} getHeatColor={getHeatColor} slippage={slippage} t={t} dark={dark}/>}
+        </div>
+      </div>}
+    </div>
+  </div>);
+}
+
+/* -- Renewals Planning Tab -- */
+function SupportPlanningTab({sheets,targets,saveTargets,t}){
+  const curYear=new Date().getFullYear();
+  const[selYear,setSelYear]=useState(curYear);
+  const[selPerson,setSelPerson]=useState('');
+  const[view,setView]=useState('summary');
+  const ii={background:t.surface,border:'1px solid '+t.border,borderRadius:8,padding:'8px 12px',fontSize:13,color:t.text,fontFamily:"'DM Sans',sans-serif"};
+  const moName=(n)=>MONTHS[parseInt(n)-1]||String(n);
+
+  // Ownership split by renewal count — ONLY when Sales Owner exists AND differs from User.
+  // If Sales Owner is empty OR same as User → 100% to SI regardless of renewal count.
+  const siOwnershipPct=(rc)=>{ if(rc===0)return 0.25; if(rc===1)return 0.50; return 1.0; };
+  const siOwnershipLabel=(rc)=>{ if(rc===0)return '25%'; if(rc===1)return '50%'; return '100%'; };
+
+  const s5=useMemo(()=>sheets.s5.map(r=>{
+    const rc=parseInt(r['renewal count']||r['Renewal Count']||r['renewalcount']||0);
+    const owner=(r.User||r.CSOwner||'').trim();
+    // Use only "Sales Owner" (column L in Sheet5) — ignore Sales Owner_2
+    const salesOwner=(r['Sales Owner']||'').trim();
+    const amount=parseAmt(r['Sales License Price AED']||0);
+    // Apply split only if Sales Owner is set AND different from User
+    const hasSplit=salesOwner!==''&&salesOwner.toLowerCase()!==owner.toLowerCase();
+    const sp=hasSplit?siOwnershipPct(rc):1.0;
+    const spLabel=hasSplit?siOwnershipLabel(rc):'100%';
+    // Parse ExpiryDate DD/MM/YYYY
+    let expiryMonth=parseInt(r.Month||0);
+    let expiryYear=parseInt((r['Year Period']||'').toString().replace(/,/g,'')||0);
+    const edStr=(r.ExpiryDate||r['Expiry Date']||'').trim();
+    if(edStr){
+      const parts=edStr.split('/');
+      if(parts.length===3){
+        const dd=parseInt(parts[0]),mm=parseInt(parts[1]),yyyy=parseInt(parts[2]);
+        if(!isNaN(dd)&&!isNaN(mm)&&!isNaN(yyyy)){expiryMonth=mm;expiryYear=yyyy;}
+      }
+    }
+    // Jan 1-10 of next year counts as Q4 of current year
+    const isNextYearJanEarly=expiryMonth===1&&expiryYear===(selYear+1)&&(()=>{
+      if(edStr){const p=edStr.split('/');if(p.length===3)return parseInt(p[0])<=10;}
+      return false;
+    })();
+    const contractYear=isNextYearJanEarly?selYear:expiryYear;
+    const effectiveMonth=isNextYearJanEarly?13:expiryMonth; // 13 = treat as Q4 of current year
+    const quarter=isNextYearJanEarly?'Q4':expiryMonth<=3?'Q1':expiryMonth<=6?'Q2':expiryMonth<=9?'Q3':'Q4';
+    return{
+      owner,
+      month:expiryMonth,
+      effectiveMonth,
+      contractYear,
+      quarter,
+      isNextYearJanEarly,
+      branch:(r.Branch||'').trim(),
+      parentBranch:(r['Parent Branch']||r['Parent branch']||'').trim(),
+      account:(r.Account||'').trim(),
+      contract:(r.Contract||'').trim(),
+      amount,
+      entitledAmount: amount * sp,
+      ownerPct: sp,
+      ownerPctLabel: spLabel,
+      renewalCount: rc,
+      salesOwner,
+      status:(r['Contract Status']||'').trim(),
+      ctype:(r['Contract Type']||'').trim(),
+    };
+  }).filter(r=>r.owner&&r.amount>0),[sheets.s5,selYear]);
+
+  const s5Owners=useMemo(()=>{
+    // All Support Incharges from Sheet 4 — shown regardless of whether they have Sheet 5 contracts or Sheet 2 collections
+    const siNames=[...new Set(buildOrg(sheets.s4).list
+      .filter(p=>p.role&&(p.role.toLowerCase().includes('support incharge')||p.role.toLowerCase().includes('support in-charge')))
+      .map(p=>p.name.trim()))];
+    return siNames.sort();
+  },[sheets.s4]);
+
+  // Two buckets per employee: renewals collected + total collected (all streams)
+  const collectedByOwner=useMemo(()=>{
+    const m={};
+    sheets.s2.forEach(r=>{
+      if(parseYear(r.yy)!==selYear)return;
+      const emp=(r.Employee||'').trim().toLowerCase();if(!emp)return;
+      const amt=parseAmt(r.Collection||0);
+      if(!m[emp])m[emp]={renewals:0,total:0};
+      m[emp].total+=amt;
+      if(isRenewalStream(r.Stream||''))m[emp].renewals+=amt;
+    });
+    return m;
+  },[sheets.s2,selYear]);
+
+  const summary=useMemo(()=>{
+    const org=buildOrg(sheets.s4);
+    const s4map={};org.list.forEach(p=>{s4map[p.name.toLowerCase()]=p;});
+    // Team renewal target = full Sheet 5 sum (no ownership split) per team
+    const teamRenewalTgt={};
+    sheets.s5.forEach(r=>{
+      const br=(r.Branch||'').trim();
+      const amt=parseAmt(r['Sales License Price AED']||0);
+      if(br&&amt)teamRenewalTgt[br]=(teamRenewalTgt[br]||0)+amt;
+    });
+    return s5Owners.map(owner=>{
+      // Only contracts for this year (including Jan 1-10 next year rule)
+      const my=s5.filter(r=>r.owner.toLowerCase()===owner.toLowerCase()&&r.contractYear===selYear);
+      const totalRenewals=my.reduce((s,r)=>s+r.entitledAmount,0);
+      const fullContractValue=my.reduce((s,r)=>s+r.amount,0);
+      const qRenewals={Q1:0,Q2:0,Q3:0,Q4:0};
+      my.forEach(r=>{if(r.quarter)qRenewals[r.quarter]=(qRenewals[r.quarter]||0)+r.entitledAmount;});
+      const ownerData=collectedByOwner[owner.toLowerCase()]||{renewals:0,total:0};
+      const renewalsCollected=ownerData.renewals;
+      const totalCollected=ownerData.total;
+      const stillToCollect=Math.max(0,fullContractValue-renewalsCollected);
+      const p=s4map[owner.toLowerCase()];
+      const br=(p&&p.branches&&p.branches[0])||'';
+      const team=(p&&p.teams&&p.teams[0])||'';
+      // SI personal annual target
+      const annTarget=parseFloat(targets['target_'+owner+'_'+selYear]||0);
+      // Team annual target (from Targets tab)
+      const teamAnnTarget=team?parseFloat(targets['team_'+team+'_'+selYear]||0):0;
+      // Team renewal target (full Sheet 5 for that branch)
+      const teamRenewTgt=br?(teamRenewalTgt[br]||0):0;
+      const deficit=annTarget>0?Math.max(0,annTarget-(totalCollected+stillToCollect)):0;
+      const coverPct=annTarget>0?pct(totalRenewals,annTarget):0;
+      const totalAttainPct=annTarget>0?pct(totalCollected,annTarget):0;
+      const branch=br||(my[0]&&my[0].branch)||'';
+      return{name:owner,branch,team,totalRenewals,fullContractValue,qRenewals,renewalsCollected,totalCollected,stillToCollect,annTarget,teamAnnTarget,teamRenewTgt,deficit,coverPct,totalAttainPct,count:my.length};
+    }).sort((a,b)=>b.totalRenewals-a.totalRenewals);
+  },[s5Owners,s5,collectedByOwner,selYear,targets,sheets.s4,sheets.s5]);
+
+  // Auto-save quarterly renewal targets — guarded by ref to fire only when s5/year actually changes
+  const qSaveKey=useRef('');
+  useEffect(()=>{
+    if(!s5Owners.length||!saveTargets)return;
+    const key=selYear+'|'+s5.length;
+    if(qSaveKey.current===key)return; // already saved for this data+year combo
+    qSaveKey.current=key;
+    const updates={};
+    s5Owners.forEach(owner=>{
+      const my=s5.filter(r=>r.owner.toLowerCase()===owner.toLowerCase()&&r.contractYear===selYear);
+      const qR={Q1:0,Q2:0,Q3:0,Q4:0};
+      my.forEach(r=>{if(r.quarter)qR[r.quarter]+=r.entitledAmount;});
+      ['Q1','Q2','Q3','Q4'].forEach(q=>{
+        updates['renewals_q_'+owner+'_'+selYear+'_'+q]=Math.round(qR[q]||0);
+      });
+    });
+    dbGet('targets').then(current=>{
+      saveTargets(Object.assign({},current||{},updates));
+    }).catch(()=>saveTargets(updates));
+  });
+
+  // Branch Cash Flow: ALL Sheet 5 rows, no owner filter, full contract values
+  const branchCashFlow=useMemo(()=>{
+    const m={};
+    sheets.s5.forEach(r=>{
+      const br=(r.Branch||r['Parent Branch']||'Unknown').trim();
+      const amt=parseAmt(r['Sales License Price AED']||0);
+      const mo=parseInt(r.Month||0);
+      if(!amt)return;
+      if(!m[br])m[br]={branch:br,total:0,count:0,byMonth:{},byMonthCount:{}};
+      m[br].total+=amt;
+      m[br].count++;
+      if(mo){if(!m[br].byMonth[mo])m[br].byMonth[mo]=0; m[br].byMonth[mo]+=amt; if(!m[br].byMonthCount[mo])m[br].byMonthCount[mo]=0; m[br].byMonthCount[mo]++;}
+    });
+    return Object.values(m).sort((a,b)=>b.total-a.total);
+  },[sheets.s5]);
+
+  const vis=useMemo(()=>selPerson?summary.filter(r=>r.name===selPerson):summary,[summary,selPerson]);
+  const kFull=useMemo(()=>{
+    const rows=selPerson?sheets.s5.filter(r=>(r.User||r.CSOwner||'').trim().toLowerCase()===selPerson.toLowerCase()):sheets.s5;
+    return rows.reduce((s,r)=>s+parseAmt(r['Sales License Price AED']||0),0);
+  },[sheets.s5,selPerson]);
+  const kE=vis.reduce((s,r)=>s+r.totalRenewals,0);
+  const kRC=useMemo(()=>{
+    const owners=selPerson
+      ?[...(new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(n=>n.toLowerCase()===selPerson.toLowerCase())))]
+      :[...new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(Boolean))];
+    return owners.reduce((s,n)=>s+(collectedByOwner[n.toLowerCase()]||{renewals:0}).renewals,0);
+  },[sheets.s5,selPerson,collectedByOwner]);
+  const kTC=useMemo(()=>{
+    const owners=selPerson
+      ?[...(new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(n=>n.toLowerCase()===selPerson.toLowerCase())))]
+      :[...new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(Boolean))];
+    return owners.reduce((s,n)=>s+(collectedByOwner[n.toLowerCase()]||{total:0}).total,0);
+  },[sheets.s5,selPerson,collectedByOwner]);
+  const kStill=Math.max(0,kFull-kRC);
+  const kD=vis.reduce((s,r)=>s+r.deficit,0);
+  const hasTargets=vis.some(r=>r.annTarget>0);
+
+  const schedule=useMemo(()=>{
+    const rows=selPerson?s5.filter(r=>r.owner===selPerson):s5;
+    const m={};
+    rows.forEach(r=>{if(!r.month)return;if(!m[r.month])m[r.month]={month:r.month,label:moName(r.month),amount:0,count:0};m[r.month].amount+=r.amount;m[r.month].count++;});
+    return Object.values(m).sort((a,b)=>a.month-b.month);
+  },[s5,selPerson]);
+
+  const detail=useMemo(()=>(selPerson?s5.filter(r=>r.owner===selPerson):s5).slice().sort((a,b)=>a.month-b.month),[s5,selPerson]);
+
+  if(!sheets.s5.length)return(
+    <div style={{textAlign:'center',padding:80,color:t.muted}}>
+      <div style={{fontSize:18,fontWeight:700,color:t.text,marginBottom:8}}>No Renewal Contracts loaded</div>
+      <div style={{fontSize:13,color:t.muted,maxWidth:500,margin:'0 auto',lineHeight:1.7}}>Upload your annual renewal report as Sheet 5 in Settings (CSV). Columns needed: CSOwner, Month, Branch, Account, Contract, Sales License Price AED, Contract Status, Contract Type. CSOwner names must match Employee names in Sheet 2.</div>
+    </div>
+  );
+
+  return(<div style={{maxWidth:1200}}>
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:18,fontWeight:700,color:t.text,marginBottom:4}}>Renewals Planning</div>
+      <div style={{fontSize:13,color:t.muted}}>Renewal pipeline vs annual target per Support Incharge. Sheet 5 contracts vs what is already collected in Sheet 2 this year.</div>
+    </div>
+    <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+      <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} style={ii}>
+        {[curYear-1,curYear,curYear+1].map(y=><option key={y} value={y}>{y}</option>)}
+      </select>
+      <select value={selPerson} onChange={e=>setSelPerson(e.target.value)} style={{...ii,minWidth:200}}>
+        <option value="">All Support Incharges</option>
+        {s5Owners.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+      <div style={{display:'flex',background:t.surface,border:'1px solid '+t.border,borderRadius:8,overflow:'hidden'}}>
+        {[['summary','Summary'],['schedule','Monthly Schedule'],['contracts','Contracts'],['cashflow','Branch Cash Flow']].map(([v,l])=>(
+          <button key={v} onClick={()=>setView(v)} style={{padding:'7px 14px',fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:view===v?t.accent:'transparent',color:view===v?'#fff':t.muted,fontFamily:"'DM Sans',sans-serif"}}>{l}</button>
+        ))}
+      </div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:16}}>
+      <div style={{background:t.card,border:'1px solid '+t.border,borderRadius:10,padding:'12px 16px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Total Renewal Pipeline</div>
+        <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>AED {fmt(kFull)}</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>SI share: AED {fmt(kE)} ({vis.reduce((s,r)=>s+r.count,0)} contracts)</div>
+      </div>
+      <div style={{background:t.card,border:'1px solid '+t.success,borderRadius:10,padding:'12px 16px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Renewals Collected</div>
+        <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.success}}>AED {fmt(kRC)}</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>AMC + renewal streams, Sheet 2</div>
+      </div>
+      <div style={{background:t.card,border:'1px solid '+t.accent,borderRadius:10,padding:'12px 16px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Total Collected</div>
+        <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.accent}}>AED {fmt(kTC)}</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>All streams, Sheet 2</div>
+      </div>
+      <div style={{background:t.card,border:'1px solid '+t.warning,borderRadius:10,padding:'12px 16px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Pending Renewals of the year</div>
+        <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.warning}}>AED {fmt(kStill)}</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>Total pipeline minus renewals collected</div>
+      </div>
+      <div style={{background:t.card,border:'1px solid '+(kD>0?t.danger:t.success),borderRadius:10,padding:'12px 16px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Deficit to Target</div>
+        <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:kD>0?t.danger:t.success}}>
+          {hasTargets?(kD>0?'AED '+fmt(kD):'Target covered'):'No targets set'}
+        </div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>target - (collected + still to collect)</div>
+      </div>
+    </div>
+
+    {view==='summary'&&<Card title={'Summary - '+selYear+(selPerson?' - '+selPerson:' - All')} t={t} style={{marginBottom:14}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:12,lineHeight:1.7}}>
+        <strong style={{color:t.text}}>Ownership split rule:</strong> Renewal #1 (count=0) SI gets 25%, Renewal #2 gets 50%, Renewal #3+ gets 100%.
+        Quarterly renewal targets are auto-saved to Targets tab from Sheet 5. Deficit = Personal Target minus (Total Collected + Pending Renewals of the year).
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr>
+              {['Support Incharge','Branch','Contracts','Team Renewal Tgt','SI Share','Q1 Renewal','Q2 Renewal','Q3 Renewal','Q4 Renewal','Renewals Collected','Total Collected','Pending Renewals of the year','Personal Target','Renewal Cover','Deficit'].map(l=>(
+                <TH key={l} t={t} right={!['Support Incharge','Branch'].includes(l)}>{l}</TH>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {vis.map((r,i)=>{
+              const cc=r.coverPct>=100?t.success:r.coverPct>=75?t.warning:t.danger;
+              return(<tr key={i} style={{borderBottom:'1px solid '+t.border,background:i%2===0?'transparent':t.surface}}>
+                <TD t={t} bold>{r.name}</TD>
+                <TD t={t} color={t.muted}>{r.branch||'-'}</TD>
+                <TD t={t} mono right color={t.muted}>{r.count}</TD>
+                <TD t={t} mono right color={t.muted}>AED {fmt(r.teamRenewTgt)}</TD>
+                <TD t={t} mono right>AED {fmt(r.totalRenewals)}</TD>
+                {['Q1','Q2','Q3','Q4'].map(q=>(
+                  <TD key={q} t={t} mono right color={t.accent}>{r.qRenewals[q]>0?'AED '+fmt(r.qRenewals[q]):'-'}</TD>
+                ))}
+                <TD t={t} mono right color={t.success}>AED {fmt(r.renewalsCollected)}</TD>
+                <TD t={t} mono right color={t.accent}>AED {fmt(r.totalCollected)}</TD>
+                <TD t={t} mono right color={t.warning}>AED {fmt(r.stillToCollect)}</TD>
+                <TD t={t} mono right color={t.muted}>{r.annTarget>0?'AED '+fmt(r.annTarget):'Not set'}</TD>
+                <TD t={t} right>{r.annTarget>0?(
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}}>
+                    <div style={{background:t.surface,borderRadius:3,height:5,width:50}}><div style={{height:5,borderRadius:3,background:cc,width:Math.min(100,r.coverPct)+'%'}}/></div>
+                    <span style={{color:cc,fontFamily:"'DM Mono',monospace",fontWeight:600}}>{fmtP(r.coverPct)}</span>
+                  </div>
+                ):'-'}</TD>
+                <TD t={t} mono right bold style={{color:r.deficit>0?t.danger:r.annTarget>0?t.success:t.muted}}>
+                  {r.annTarget>0?(r.deficit>0?'AED '+fmt(r.deficit):'Covered'):'-'}
+                </TD>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+      {vis.filter(r=>!r.annTarget).length>0&&<div style={{fontSize:11,color:t.warning,marginTop:10}}>
+        {vis.filter(r=>!r.annTarget).length} person(s) have no personal target set. Go to Targets tab.
+      </div>}
+    </Card>}
+
+    {view==='schedule'&&<Card title={'Monthly Renewal Schedule - '+(selPerson||'All')} t={t} style={{marginBottom:14}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:12}}>Contract expiry schedule by month from Sheet 5. Use this to forecast monthly cash flow and plan workload.</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
+        {schedule.map((m,i)=>(
+          <div key={i} style={{background:t.surface,borderRadius:10,padding:'12px 14px',border:'1px solid '+t.border}}>
+            <div style={{fontSize:11,fontWeight:700,color:t.muted,marginBottom:4}}>{m.label}</div>
+            <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>AED {fmt(m.amount)}</div>
+            <div style={{fontSize:11,color:t.muted,marginTop:2}}>{m.count} contract{m.count!==1?'s':''}</div>
+          </div>
+        ))}
+        {!schedule.length&&<div style={{color:t.muted,fontSize:13,padding:20}}>No contracts found.</div>}
+      </div>
+    </Card>}
+
+    {view==='contracts'&&<Card title={'Contracts - '+(selPerson||'All')} t={t} style={{marginBottom:14}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:8}}>Full contract list. SI Share column shows the ownership-adjusted amount counting toward the Support Incharge target.</div>
+      <div style={{overflowX:'auto',maxHeight:520,border:'1px solid '+t.border,borderRadius:8}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead style={{position:'sticky',top:0,background:t.card,zIndex:2}}>
+            <tr>{['Month','Account','Contract','Type','Full Amount','SI Share','Renewal #','Status','Owner'].map(l=>(
+              <TH key={l} t={t} right={['Full Amount','SI Share'].includes(l)}>{l}</TH>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {detail.map((r,i)=>{
+              const sc=r.status==='Active'?t.success:r.status==='Due'?t.warning:t.danger;
+              const rc=r.renewalCount;
+              const rcColor=rc===0?t.warning:rc===1?t.accent:t.success;
+              return(<tr key={i} style={{borderBottom:'1px solid '+t.border,background:i%2===0?'transparent':t.surface}}>
+                <TD t={t}><Badge text={moName(r.month)} type="blue"/></TD>
+                <TD t={t} style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.account}</TD>
+                <TD t={t} color={t.muted}>{r.contract}</TD>
+                <TD t={t}><Badge text={r.ctype||'?'} type={r.ctype==='AMC'?'purple':'green'}/></TD>
+                <TD t={t} mono right color={t.muted}>AED {fmt(r.amount)}</TD>
+                <TD t={t} mono right>
+                  <span style={{color:t.text,fontFamily:"'DM Mono',monospace"}}>AED {fmt(r.entitledAmount)}</span>
+                  <span style={{fontSize:10,color:rcColor,marginLeft:4,fontWeight:700}}>{r.ownerPctLabel}</span>
+                </TD>
+                <TD t={t}>
+                  <span style={{fontSize:11,fontWeight:700,color:rcColor,fontFamily:"'DM Mono',monospace"}}>
+                    {'Y'+(rc+1)+' ('+r.ownerPctLabel+')'}
+                  </span>
+                </TD>
+                <TD t={t}><span style={{fontSize:11,fontWeight:600,color:sc}}>{r.status||'-'}</span></TD>
+                <TD t={t} color={t.muted}>{r.owner}</TD>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:11,color:t.muted,marginTop:8}}>
+        {detail.length} contracts - Full Value: AED {fmt(detail.reduce((s,r)=>s+r.amount,0))} - SI Share: AED {fmt(detail.reduce((s,r)=>s+r.entitledAmount,0))}
+      </div>
+    </Card>}
+
+    {view==='cashflow'&&<Card title={'Branch Cash Flow Forecast - '+(selPerson||'All')} t={t} style={{marginBottom:14}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:16,lineHeight:1.7}}>
+        <strong style={{color:t.text}}>Company cash flow view:</strong> Full contract values regardless of ownership split.
+        This represents what the company expects to collect, not individual targets.
+      </div>
+      {branchCashFlow.map((br,bi)=>{
+        const allMonths=[1,2,3,4,5,6,7,8,9,10,11,12];
+        const hasAny=allMonths.some(mo=>br.byMonth[mo]>0);
+        if(!hasAny)return null;
+        return(
+          <div key={bi} style={{marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:700,color:t.text,textTransform:'uppercase',letterSpacing:'.5px'}}>{br.branch}</div>
+              <div style={{fontSize:12,color:t.muted}}>{br.count} contracts &nbsp;|&nbsp; <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.accent}}>AED {fmt(br.total)}</span></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10}}>
+              {allMonths.map(mo=>{
+                const amt=br.byMonth[mo]||0;
+                const cnt=br.byMonthCount?br.byMonthCount[mo]||0:0;
+                return(
+                  <div key={mo} style={{background:t.surface,border:'1px solid '+(amt>0?t.border:'transparent'),borderRadius:10,padding:'10px 12px',opacity:amt>0?1:0.35}}>
+                    <div style={{fontSize:11,fontWeight:700,color:t.muted,marginBottom:6}}>{MONTHS[mo-1]}</div>
+                    <div style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text,marginBottom:3}}>
+                      {amt>0?'AED '+fmt(amt):'-'}
+                    </div>
+                    <div style={{fontSize:11,color:t.muted}}>{cnt>0?cnt+' contract'+(cnt!==1?'s':''):''}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {!branchCashFlow.length&&<div style={{color:t.muted,fontSize:13,padding:20}}>No contract data found.</div>}
+      <div style={{marginTop:4,padding:'10px 14px',background:t.surface,borderRadius:8,border:'1px solid '+t.border,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:12,color:t.muted,fontWeight:600}}>Total Company Renewal Pipeline</span>
+        <span style={{fontSize:16,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>AED {fmt(branchCashFlow.reduce((s,b)=>s+b.total,0))}</span>
+      </div>
+    </Card>}
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
