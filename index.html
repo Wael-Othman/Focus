@@ -271,6 +271,18 @@ const isRenewalStream=(stream)=>{const s=(stream||'').toLowerCase().trim();retur
 const DEFAULT_CREDIT = {name:'Credit: Wael Othman', email:'Wael@focussoftnet.ae'};
 const CREDIT_PWD_HASH = '72d1b5da6eeaf1789df86487da50ad5e9dadb5ffaecb56b6de592aa286c9c1b8';
 
+/* ── Hardcoded master password hash ── */
+const MASTER_PWD_HASH = '72d1b5da6eeaf1789df86487da50ad5e9dadb5ffaecb56b6de592aa286c9c1b8';
+
+/* ── Hardcoded Google Sheets URLs (IndexedDB overrides these per-device) ── */
+const DEFAULT_GSHEET_URLS = {
+  s1:'https://docs.google.com/spreadsheets/d/e/2PACX-1vQNL_zCQrrsCZFWwVb6xZrlr3VVW47SBUGmmogmRkeA9gwsiVfLBIQf0Moeo3PNuC1f_TLS2rzK84ij/pub?gid=0&single=true&output=csv',
+  s2:'https://docs.google.com/spreadsheets/d/e/2PACX-1vQNL_zCQrrsCZFWwVb6xZrlr3VVW47SBUGmmogmRkeA9gwsiVfLBIQf0Moeo3PNuC1f_TLS2rzK84ij/pub?gid=1014659589&single=true&output=csv',
+  s3:'https://docs.google.com/spreadsheets/d/e/2PACX-1vQNL_zCQrrsCZFWwVb6xZrlr3VVW47SBUGmmogmRkeA9gwsiVfLBIQf0Moeo3PNuC1f_TLS2rzK84ij/pub?gid=714912471&single=true&output=csv',
+  s4:'https://docs.google.com/spreadsheets/d/e/2PACX-1vQNL_zCQrrsCZFWwVb6xZrlr3VVW47SBUGmmogmRkeA9gwsiVfLBIQf0Moeo3PNuC1f_TLS2rzK84ij/pub?gid=1302311564&single=true&output=csv',
+  s5:'https://docs.google.com/spreadsheets/d/e/2PACX-1vQNL_zCQrrsCZFWwVb6xZrlr3VVW47SBUGmmogmRkeA9gwsiVfLBIQf0Moeo3PNuC1f_TLS2rzK84ij/pub?gid=1808532423&single=true&output=csv',
+};
+
 const THEMES={
   light:{bg:'#f1f5f9',card:'#ffffff',border:'#e2e8f0',text:'#0f172a',muted:'#64748b',accent:'#3b82f6',success:'#10b981',warning:'#f59e0b',danger:'#ef4444',surface:'#f8fafc'},
   dark:{bg:'#0f172a',card:'#1e293b',border:'#334155',text:'#f1f5f9',muted:'#94a3b8',accent:'#60a5fa',success:'#34d399',warning:'#fbbf24',danger:'#f87171',surface:'#0f172a'}
@@ -383,14 +395,14 @@ function AIInsights({prompt,t,label='AI Insights'}){
   </div>);
 }
 
+
+
 /* ── Password Gate ── */
 function PasswordGate({t,onUnlock}){
   const[pwd,setPwd]=useState('');const[err,setErr]=useState('');
   const check=async()=>{
     const h=await hashPwd(pwd);
-    const stored=await dbGet('pwd_hash');
-    if(!stored){await dbSet('pwd_hash',h);onUnlock();}
-    else if(h===stored){onUnlock();}
+    if(h===MASTER_PWD_HASH){onUnlock();}
     else{setErr('Incorrect password');setPwd('');}
   };
   return(<div style={{minHeight:'100vh',background:t.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -398,10 +410,9 @@ function PasswordGate({t,onUnlock}){
       <div style={{fontSize:40,marginBottom:16}}>🔐</div>
       <div style={{fontSize:20,fontWeight:700,color:t.text,marginBottom:8}}>Focus Dashboard</div>
       <div style={{fontSize:13,color:t.muted,marginBottom:24}}>Enter your password to continue</div>
-      <Inp value={pwd} onChange={e=>{setPwd(e.target.value);setErr('');}} placeholder="Password" t={t} type="password" style={{marginBottom:12,textAlign:'center'}}/>
+      <Inp value={pwd} onChange={e=>{setPwd(e.target.value);setErr('');}} placeholder="Password" t={t} type="password" style={{marginBottom:12,textAlign:'center'}} onKeyDown={e=>e.key==='Enter'&&check()}/>
       {err&&<div style={{fontSize:12,color:t.danger,marginBottom:10}}>{err}</div>}
       <Btn primary t={t} onClick={check} style={{width:'100%',padding:'10px',fontSize:14}}>Unlock</Btn>
-      <div style={{fontSize:11,color:t.muted,marginTop:16}}>First time? Any password you enter becomes the master password.</div>
     </div>
   </div>);
 }
@@ -411,8 +422,7 @@ function TabPasswordGate({t,tabName,onUnlock}){
   const[pwd,setPwd]=useState('');const[err,setErr]=useState('');
   const check=async()=>{
     const h=await hashPwd(pwd);
-    const stored=await dbGet('pwd_hash');
-    if(h===stored){onUnlock();}
+    if(h===MASTER_PWD_HASH){onUnlock();}
     else{setErr('Incorrect password');setPwd('');}
   };
   return(
@@ -431,39 +441,12 @@ function TabPasswordGate({t,tabName,onUnlock}){
 
 /* ── Security Tab ── */
 function SecurityTab({t,onLock,credit,onSaveCredit}){
-  const[cur,setCur]=useState('');const[np,setNp]=useState('');const[np2,setNp2]=useState('');const[msg,setMsg]=useState('');const[msgType,setMsgType]=useState('');
-  const m=(txt,tp)=>{setMsg(txt);setMsgType(tp);setTimeout(()=>setMsg(''),3000);};
-  const change=async()=>{
-    if(!cur||!np||!np2){m('Fill all fields','danger');return;}
-    if(np!==np2){m('New passwords do not match','danger');return;}
-    if(np.length<4){m('Password too short (min 4 chars)','danger');return;}
-    const curH=await hashPwd(cur);const stored=await dbGet('pwd_hash');
-    if(stored&&curH!==stored){m('Current password incorrect','danger');return;}
-    await dbSet('pwd_hash',await hashPwd(np));
-    m('Password updated ✓','success');setCur('');setNp('');setNp2('');
-  };
-  const remove=async()=>{
-    if(!cur){m('Enter current password first','danger');return;}
-    const curH=await hashPwd(cur);const stored=await dbGet('pwd_hash');
-    if(stored&&curH!==stored){m('Current password incorrect','danger');return;}
-    await dbDel('pwd_hash');
-    m('Password removed — dashboard is now open','success');setCur('');
-  };
   return(<div style={{maxWidth:460}}>
-    <Card title="Password Protection" t={t}>
-      <div style={{fontSize:13,color:t.muted,marginBottom:20,lineHeight:1.6}}>Set a password to protect this dashboard. The password hash is stored locally in your browser — it never leaves your device.</div>
-      {[['Current Password',cur,setCur],['New Password',np,setNp],['Confirm New Password',np2,setNp2]].map(([lbl,val,set])=>(
-        <div key={lbl} style={{marginBottom:12}}>
-          <label style={{fontSize:12,fontWeight:600,color:t.muted,display:'block',marginBottom:5}}>{lbl}</label>
-          <Inp value={val} onChange={e=>{set(e.target.value);setMsg('');}} placeholder="••••••••" t={t} type="password"/>
-        </div>
-      ))}
-      {msg&&<div style={{fontSize:13,color:t[msgType]||t.text,marginBottom:12,padding:'8px 12px',background:t.surface,borderRadius:6}}>{msg}</div>}
-      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-        <Btn primary t={t} onClick={change}>Update Password</Btn>
-        <Btn t={t} onClick={remove} style={{color:t.danger,borderColor:t.danger}}>Remove Password</Btn>
-        <Btn t={t} onClick={onLock}>🔒 Lock Now</Btn>
+    <Card title="Session" t={t}>
+      <div style={{fontSize:13,color:t.muted,marginBottom:16,lineHeight:1.6}}>
+        This dashboard is password protected. Lock your session when stepping away.
       </div>
+      <Btn t={t} onClick={onLock} style={{fontSize:13,padding:'8px 18px'}}>🔒 Lock Protected Tabs</Btn>
     </Card>
 
     {/* Credit editor */}
@@ -509,10 +492,12 @@ function SettingsTab({sheets,sheetMeta,onFileUpload,onClearSheet,gsheetUrls,setG
   const[localUrls,setLocalUrls]=useState(gsheetUrls);
   const[saving,setSaving]=useState(false);
   const[saved,setSaved]=useState(false);
+  const[showHelp,setShowHelp]=useState(false);
   const SC=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899'];const ICONS=['📋','💰','🔭','👥'];
   const counts=['s1','s2','s3','s4','s5'].map(k=>sheets[k].length);
   const allLoaded=counts.slice(0,4).every(c=>c>0);const totalRows=counts.reduce((a,b)=>a+b,0);
   const drop=(k,e)=>{e.preventDefault();setDrag(null);const f=e.dataTransfer.files[0];if(f)onFileUpload(k,f);};
+  const urlsChanged=JSON.stringify(localUrls)!==JSON.stringify(gsheetUrls);
   const saveUrls=async()=>{
     setSaving(true);setSaved(false);
     await dbSet('gsheet_urls',localUrls);
@@ -521,8 +506,66 @@ function SettingsTab({sheets,sheetMeta,onFileUpload,onClearSheet,gsheetUrls,setG
     setTimeout(()=>setSaved(false),2500);
   };
   const SHEET_NAMES=['Sheet 1 (Historical)','Sheet 2 (Current Year)','Sheet 3 (Pipeline)','Sheet 4 (Org)','Sheet 5 (Contracts)'];
-  const hasAnyUrl=Object.values(localUrls).some(u=>u.trim());
+  const hasAnyUrl=Object.values(localUrls).some(u=>u&&u.trim());
+
+  // ── Download Updated File ─────────────────────────────────────────────────
+  const downloadUpdatedFile=async()=>{
+    // Read the current source file
+    let src='';
+    try{
+      const res=await fetch(window.location.href);
+      src=await res.text();
+    }catch(e){
+      alert('Could not read the source file. Make sure you are opening index.html via a local server or direct file path.');
+      return;
+    }
+    // Replace the DEFAULT_GSHEET_URLS block with updated URLs
+    const newBlock=`const DEFAULT_GSHEET_URLS = {\n  s1:'${localUrls.s1||DEFAULT_GSHEET_URLS.s1}',\n  s2:'${localUrls.s2||DEFAULT_GSHEET_URLS.s2}',\n  s3:'${localUrls.s3||DEFAULT_GSHEET_URLS.s3}',\n  s4:'${localUrls.s4||DEFAULT_GSHEET_URLS.s4}',\n  s5:'${localUrls.s5||DEFAULT_GSHEET_URLS.s5}',\n};`;
+    const updated=src.replace(/const DEFAULT_GSHEET_URLS = \{[\s\S]*?\};/,newBlock);
+    if(updated===src){alert('Could not locate the URL block in the source. The file may have been modified.');return;}
+    const blob=new Blob([updated],{type:'text/html'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='index.html';a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   return(<div style={{maxWidth:860}}>
+
+    {/* ── Help Panel ── */}
+    <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'14px 18px',marginBottom:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div style={{fontWeight:700,fontSize:13,color:t.text}}>ℹ️ How this dashboard works</div>
+        <button onClick={()=>setShowHelp(h=>!h)} style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:t.accent,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{showHelp?'▲ Hide':'▼ Show'}</button>
+      </div>
+      {showHelp&&<div style={{marginTop:14,display:'grid',gap:12}}>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px',borderLeft:`3px solid ${t.accent}`}}>
+          <div style={{fontWeight:700,fontSize:12,color:t.accent,marginBottom:6,textTransform:'uppercase',letterSpacing:'.5px'}}>For regular viewers</div>
+          <div style={{fontSize:13,color:t.text,lineHeight:1.8}}>
+            1. Open <strong>index.html</strong> in your browser.<br/>
+            2. Enter the password when prompted.<br/>
+            3. Data loads automatically — no setup needed.<br/>
+            4. To see the latest data, just <strong>refresh the page</strong> (Ctrl+R / ⌘+R).
+          </div>
+        </div>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px',borderLeft:`3px solid ${t.success}`}}>
+          <div style={{fontWeight:700,fontSize:12,color:t.success,marginBottom:6,textTransform:'uppercase',letterSpacing:'.5px'}}>For the owner (you)</div>
+          <div style={{fontSize:13,color:t.text,lineHeight:1.8}}>
+            <strong>To update data:</strong> Edit your Google Sheets — viewers just refresh.<br/>
+            <strong>To update URLs:</strong> Paste new URLs below → click <em>Save URLs</em> → click <em>⬇ Download Updated File</em> → replace the file on GitHub/Dropbox.<br/>
+            <strong>Your local override:</strong> Saved URLs apply only to your browser. The downloaded file bakes the new URLs in for everyone.
+          </div>
+        </div>
+        <div style={{background:t.surface,borderRadius:10,padding:'12px 16px',borderLeft:`3px solid ${t.warning}`}}>
+          <div style={{fontWeight:700,fontSize:12,color:t.warning,marginBottom:6,textTransform:'uppercase',letterSpacing:'.5px'}}>Data flow</div>
+          <div style={{fontSize:13,color:t.text,lineHeight:1.8}}>
+            On every page load, the dashboard fetches live data from your 5 Google Sheets URLs.<br/>
+            Data is cached in the browser (IndexedDB) as a fallback if the network is unavailable.<br/>
+            <strong>No data is ever uploaded</strong> — everything flows one way: Google Sheets → your browser.
+          </div>
+        </div>
+      </div>}
+    </div>
+
     <div style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',gap:16}}>
       <div style={{fontSize:28,flexShrink:0}}>💾</div>
       <div><div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:6}}>Data saved in your browser</div>
@@ -547,6 +590,8 @@ function SettingsTab({sheets,sheetMeta,onFileUpload,onClearSheet,gsheetUrls,setG
           <div style={{fontSize:11,color:t.muted,marginTop:8}}>or drag &amp; drop</div>
         </div>);})}
     </div>
+
+    {/* ── Google Sheets URLs ── */}
     <div style={{marginTop:20,background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'16px 20px',marginBottom:0}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
         <div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px'}}>Google Sheets Auto-Load</div>
@@ -571,13 +616,21 @@ function SettingsTab({sheets,sheetMeta,onFileUpload,onClearSheet,gsheetUrls,setG
           </div>
         );
       })}
-      <div style={{display:'flex',gap:8,marginTop:14,alignItems:'center'}}>
+      <div style={{display:'flex',gap:8,marginTop:14,alignItems:'center',flexWrap:'wrap'}}>
         <button onClick={saveUrls} disabled={saving} style={{padding:'7px 18px',background:t.accent,color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>
           {saving?'Saving...':'💾 Save URLs'}
         </button>
+        <button onClick={downloadUpdatedFile} title="Download index.html with these URLs baked in as the new defaults for all users" style={{padding:'7px 18px',background:'#10b981',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>
+          ⬇ Download Updated File
+        </button>
         {saved&&<span style={{fontSize:12,color:'#10b981',fontWeight:600}}>✅ Saved — will auto-load on next open</span>}
+        {urlsChanged&&!saved&&<span style={{fontSize:12,color:t.warning}}>⚠ Unsaved changes — save first, then download</span>}
+      </div>
+      <div style={{marginTop:10,fontSize:11,color:t.muted,lineHeight:1.6}}>
+        <strong style={{color:t.text}}>⬇ Download Updated File</strong> — generates a new index.html with your URLs baked in. Share this file so all users get the new URLs automatically, no setup needed.
       </div>
     </div>
+
     <div style={{marginTop:16,background:t.card,border:`1px solid ${t.border}`,borderRadius:12,padding:'14px 18px'}}>
       <div style={{fontSize:11,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:10}}>Danger Zone</div>
       <Btn t={t} onClick={()=>{if(window.confirm('Clear ALL sheet data?')){['s1','s2','s3','s4','s5'].forEach(k=>onClearSheet(k));}}} style={{color:t.danger,borderColor:t.danger}}>🗑 Clear All Sheets</Btn>
@@ -655,7 +708,12 @@ function TargetsTab({sheets,targets,saveTargets,t}){
   const org=useMemo(()=>buildOrg(sheets.s4),[sheets.s4]);
   const teams=useMemo(()=>[...new Set(sheets.s4.filter(r=>r.Team).map(r=>r.Team).filter(Boolean))].sort(),[sheets.s4]);
   const branches=useMemo(()=>[...new Set(sheets.s4.map(r=>r.Branch).filter(Boolean))].sort(),[sheets.s4]);
-  const allExecs=useMemo(()=>org.list.filter(p=>!isManager(p.role)&&p.name).sort((a,b)=>a.name.localeCompare(b.name)),[org]);
+  // Include everyone (managers + execs); managers listed first
+  const allExecs=useMemo(()=>org.list.filter(p=>p.name).sort((a,b)=>{
+    const am=isManager(a.role)?0:1,bm=isManager(b.role)?0:1;
+    if(am!==bm)return am-bm;
+    return a.name.localeCompare(b.name);
+  }),[org]);
   const execs=useMemo(()=>selBranch?allExecs.filter(p=>(p.branches||[]).includes(selBranch)):allExecs,[allExecs,selBranch]);
   const setT=(k,v)=>{const u={...local,[k]:v};setLocal(u);saveTargets(u);};
   const ii={background:t.surface,border:"1px solid "+t.border,borderRadius:6,padding:"6px 10px",fontSize:12,color:t.text,fontFamily:"DM Mono,monospace",width:"100%"};
@@ -679,6 +737,27 @@ function TargetsTab({sheets,targets,saveTargets,t}){
         <label style={{background:t.surface,border:"1px solid "+t.border,borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",color:t.text}}>⬆ Import<input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);saveTargets(d);setLocal(d);}catch(ex){alert("Invalid JSON");}};r.readAsText(f);}}/></label>
       </div>
     </div>
+
+    <Card title={"Branch Targets — "+year} t={t} style={{marginBottom:16}}>
+      <div style={{fontSize:12,color:t.muted,marginBottom:10,lineHeight:1.6}}>
+        Optional. When set, used directly in Performance instead of summing team targets. Leave blank to auto-sum from teams.
+      </div>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>{["Branch","Annual Target","Q1","Q2","Q3","Q4","vs Sum of Teams"].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead>
+        <tbody>{branches.map(branch=>{
+          const kb="branch_"+branch+"_"+year;
+          const bv=parseFloat(local[kb]||0);
+          const teamSum=teams.filter(team=>sheets.s4.some(r=>r.Branch===branch&&r.Team===team)).reduce((s,team)=>s+parseFloat(local["team_"+team+"_"+year]||0),0);
+          const diff=bv-teamSum;
+          return(<tr key={branch}>
+            <TD t={t}><div style={{fontWeight:600}}>{branch}</div></TD>
+            <TD t={t}><input type="number" value={local[kb]||""} placeholder={"Auto: "+fmt(teamSum)} onChange={e=>setT(kb,e.target.value)} style={ii}/></TD>
+            {QTRS.map(({q,w})=><TD key={q} t={t} mono right>{bv>0?'AED '+fmt(bv*w/100):<span style={{color:t.muted,fontSize:11}}>auto</span>}</TD>)}
+            <TD t={t}>{bv>0?<span style={{fontSize:12,color:diff===0?t.success:diff>0?t.warning:t.danger,fontFamily:"'DM Mono',monospace"}}>{diff>0?'+':''}{fmt(diff)}</span>:<span style={{fontSize:11,color:t.muted}}>—</span>}</TD>
+          </tr>);
+        })}</tbody>
+      </table></div>
+    </Card>
     <Card title={"Team Targets — "+year} t={t} style={{marginBottom:16}}>
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
         <thead><tr>{["Team","Annual Target","Q1","Q2","Q3","Q4"].map(l=><TH key={l} t={t}>{l}</TH>)}</tr></thead>
@@ -1463,7 +1542,9 @@ function PerformanceTab({allTx,targets,sheets,t}){
       if(!grouped[branch][team])grouped[branch][team]=[];
       const ytd=ytdByE[empName]||0;
       const at=parseFloat(targets[`target_${empName}_${selYear}`]||0);
-      const qt=at*(Q_WEIGHTS[selQtr]||0.25);
+      // YTD cumulative target: carry forward all prior quarters
+      const YTD_WEIGHTS={Q1:0.25,Q2:0.45,Q3:0.65,Q4:1.00};
+      const qt=at*(YTD_WEIGHTS[selQtr]||0.25);
       const v=ytd-qt;
       const aq=qt?pct(ytd,qt):0;
       const aa=at?pct(ytd,at):0;
@@ -1471,19 +1552,27 @@ function PerformanceTab({allTx,targets,sheets,t}){
       grouped[branch][team].push({name:empName,role,team,branch,ytd,at,qt,v,aq,aa,st});
     });
 
-    // Pre-aggregate teams and branches
+    // Pre-aggregate teams and branches — team target from Targets tab if defined, else sum of members
+    const YTD_WEIGHTS_AGG={Q1:0.25,Q2:0.45,Q3:0.65,Q4:1.00};
     const branchMap={};
     Object.keys(grouped).sort().forEach(branch=>{
       let bYtd=0,bAt=0,bQt=0;
       const teamMap={};
       Object.keys(grouped[branch]).sort().forEach(team=>{
         const members=grouped[branch][team].sort((a,b)=>b.ytd-a.ytd);
-        let tYtd=0,tAt=0,tQt=0;
-        members.forEach(m=>{tYtd+=m.ytd;tAt+=m.at;tQt+=m.qt;});
+        const tYtd=members.reduce((s,m)=>s+m.ytd,0);
+        const teamAnnDefined=parseFloat(targets[`team_${team}_${selYear}`]||0);
+        const memberSumAt=members.reduce((s,m)=>s+m.at,0);
+        const tAt=teamAnnDefined>0?teamAnnDefined:memberSumAt;
+        const tQt=tAt*(YTD_WEIGHTS_AGG[selQtr]||0.25);
         bYtd+=tYtd;bAt+=tAt;bQt+=tQt;
-        teamMap[team]={ytd:tYtd,at:tAt,qt:tQt,v:tYtd-tQt,aq:tQt?pct(tYtd,tQt):0,aa:tAt?pct(tYtd,tAt):0,members};
+        teamMap[team]={ytd:tYtd,at:tAt,qt:tQt,v:tYtd-tQt,aq:tQt?pct(tYtd,tQt):0,aa:tAt?pct(tYtd,tAt):0,members,src:teamAnnDefined>0?'T':'∑'};
       });
-      branchMap[branch]={ytd:bYtd,at:bAt,qt:bQt,v:bYtd-bQt,aq:bQt?pct(bYtd,bQt):0,aa:bAt?pct(bYtd,bAt):0,teams:teamMap};
+      // Use branch target from Targets tab if defined, else sum of teams
+      const branchAnnDefined=parseFloat(targets[`branch_${branch}_${selYear}`]||0);
+      const finalBAt=branchAnnDefined>0?branchAnnDefined:bAt;
+      const finalBQt=finalBAt*(YTD_WEIGHTS_AGG[selQtr]||0.25);
+      branchMap[branch]={ytd:bYtd,at:finalBAt,qt:finalBQt,v:bYtd-finalBQt,aq:finalBQt?pct(bYtd,finalBQt):0,aa:finalBAt?pct(bYtd,finalBAt):0,teams:teamMap};
     });
     return branchMap;
   },[allTx,selYear,selQtr,fMonth,fTeam,fBranch,sheets.s4,targets]);
@@ -1494,31 +1583,26 @@ function PerformanceTab({allTx,targets,sheets,t}){
     Object.keys(groupedData).sort().forEach(branch=>{
       const bd=groupedData[branch];
       rows.push({
-        key:`b:${branch}`,label:branch,icon:'🏢',level:0,
+        key:`b:${branch}`,label:branch,icon:'\ud83c\udfe2',level:0,
         isHeader:true,nodeType:'branch',
         ytd:bd.ytd,at:bd.at,qt:bd.qt,v:bd.v,aq:bd.aq,aa:bd.aa,
         hasChildren:true,childCount:Object.keys(bd.teams).length,
       });
-      if(treeLevel==='branch')return; // branch-only view: no children
-
-      // Show teams if level is 'team' or 'employee', or if branch is expanded
+      if(treeLevel==='branch')return;
       const showTeams=treeLevel==='team'||treeLevel==='employee'||expanded[`b:${branch}`];
       if(!showTeams)return;
-
       Object.keys(bd.teams).sort().forEach(team=>{
         const td=bd.teams[team];
+        const teamLabel=td.src==='T'?`${team} \u25b6 T`:`${team}`;
         rows.push({
-          key:`t:${branch}:${team}`,label:team,icon:'👥',level:1,
+          key:`t:${branch}:${team}`,label:teamLabel,icon:'\ud83d\udc65',level:1,
           isHeader:true,nodeType:'team',
           ytd:td.ytd,at:td.at,qt:td.qt,v:td.v,aq:td.aq,aa:td.aa,
           hasChildren:true,childCount:td.members.length,branch,
         });
-        if(treeLevel==='team')return; // team-level view: no employees
-
-        // Show employees if level is 'employee', or if team is expanded
+        if(treeLevel==='team')return;
         const showEmps=treeLevel==='employee'||expanded[`t:${branch}:${team}`];
         if(!showEmps)return;
-
         td.members.forEach(m=>{
           rows.push({
             key:`e:${m.name}`,label:m.name,icon:'',level:2,
@@ -2111,7 +2195,7 @@ function App(){
   useEffect(()=>{document.body.style.background=t.bg;document.body.style.color=t.text;},[t]);
   useEffect(()=>{try{localStorage.setItem('ciq_dark',dark?'1':'0');}catch(_e){};},[dark]);
 
-  const[gsheetUrls,setGsheetUrls]=useState({s1:'',s2:'',s3:'',s4:'',s5:''});
+  const[gsheetUrls,setGsheetUrls]=useState(DEFAULT_GSHEET_URLS);
   const[gsheetStatus,setGsheetStatus]=useState({});
 
   const fetchSheetFromUrl=useCallback(async(k,url)=>{
@@ -2150,21 +2234,29 @@ function App(){
   useEffect(()=>{
     async function boot(){
       try{
-        const[s1,s2,s3,s4,s5,meta,tg,pwd,cred,urls]=await Promise.all([dbGet('s1'),dbGet('s2'),dbGet('s3'),dbGet('s4'),dbGet('s5'),dbGet('sheetMeta'),dbGet('targets'),dbGet('pwd_hash'),dbGet('credit'),dbGet('gsheet_urls')]);
+        const[s1,s2,s3,s4,s5,meta,tg,cred,urls]=await Promise.all([dbGet('s1'),dbGet('s2'),dbGet('s3'),dbGet('s4'),dbGet('s5'),dbGet('sheetMeta'),dbGet('targets'),dbGet('credit'),dbGet('gsheet_urls')]);
         const loaded={s1:s1||[],s2:s2||[],s3:s3||[],s4:s4||[],s5:s5||[]};
         setSheets(loaded);if(meta)setSheetMeta(meta);if(tg)setTargets(tg);
         if(cred)setCredit(cred);
         compUnmapped(loaded);
-        if(pwd){setHasPwd(true);}
-        if(urls){
-          setGsheetUrls(urls);
-          // Auto-refresh from Google Sheets on load if URLs configured
-          setBooting(false);
-          await refreshFromGSheets(urls,true);
-          return;
-        }
+        // Password is always hardcoded — tab-level protection only
+        setHasPwd(true);
+        // Two-tier URL: IndexedDB overrides per-slot, falls back to hardcoded defaults
+        const activeUrls={
+          s1:(urls&&urls.s1)||DEFAULT_GSHEET_URLS.s1,
+          s2:(urls&&urls.s2)||DEFAULT_GSHEET_URLS.s2,
+          s3:(urls&&urls.s3)||DEFAULT_GSHEET_URLS.s3,
+          s4:(urls&&urls.s4)||DEFAULT_GSHEET_URLS.s4,
+          s5:(urls&&urls.s5)||DEFAULT_GSHEET_URLS.s5,
+        };
+        setGsheetUrls(activeUrls);
+        setBooting(false);
+        await refreshFromGSheets(activeUrls,true);
+        return;
       }catch(e){console.error(e);}
+      setHasPwd(true);
       setBooting(false);
+      await refreshFromGSheets(DEFAULT_GSHEET_URLS,true);
     }
     boot();
   },[]);
@@ -2220,7 +2312,6 @@ function App(){
   const TABS=[['overview','Overview'],['analysis','Analysis'],['performance','Performance'],['pipeline','Pipeline'],['commission','Commission'],['support','Renewals Planning'],['reverse','🧮 Reverse Calc'],['targets','Targets'],['settings','⚙ Settings'],['security','🔐 Security']];
 
   if(booting)return(<div style={{minHeight:'100vh',background:t.bg,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16}}><div className="spin" style={{fontSize:36,color:t.accent}}>⟳</div><div style={{color:t.muted,fontSize:14}}>Loading saved data...</div></div>);
-  if(locked)return <PasswordGate t={t} onUnlock={()=>setLocked(false)}/>;
 
   return(<div style={{minHeight:'100vh',background:t.bg,color:t.text}}>
     <div style={{background:t.card,borderBottom:`1px solid ${t.border}`,padding:'0 20px',display:'flex',alignItems:'center',height:52,position:'sticky',top:0,zIndex:100}}>
@@ -2246,17 +2337,18 @@ function App(){
         </div>
         {aFC>0&&<span style={{fontSize:11,background:t.accent,color:'#fff',borderRadius:10,padding:'2px 7px',fontWeight:700}}>{aFC}</span>}
         <Btn t={t} onClick={()=>setDark(d=>!d)} style={{padding:'5px 10px',fontSize:12}}>{dark?'☀️':'🌙'}</Btn>
-        {hasPwd&&<Btn t={t} onClick={()=>{setLocked(true);setTabUnlocked(false);}} style={{padding:'5px 10px',fontSize:12}}>🔒</Btn>}
+        {hasPwd&&<Btn t={t} onClick={()=>setTabUnlocked(false)} title="Lock protected tabs" style={{padding:'5px 10px',fontSize:12}}>🔒</Btn>}
       </div>
     </div>
 
     <div style={{padding:20,maxWidth:1600,margin:'0 auto'}}>
       {unmapped.length>0&&<div style={{background:'#fef3c7',border:'1px solid #fcd34d',borderRadius:8,padding:'10px 16px',color:'#92400e',fontSize:13,marginBottom:14}}>⚠️ <strong>Unmapped ({unmapped.length}):</strong> {unmapped.slice(0,5).join(', ')}{unmapped.length>5?` +${unmapped.length-5} more`:''}</div>}
 
-      {tab==='settings'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="⚙ Settings" onUnlock={()=>setTabUnlocked(true)}/>:<SettingsTab sheets={sheets} sheetMeta={sheetMeta} onFileUpload={onFileUpload} onClearSheet={onClearSheet} gsheetUrls={gsheetUrls} setGsheetUrls={setGsheetUrls} gsheetStatus={gsheetStatus} onRefreshGSheets={()=>refreshFromGSheets(gsheetUrls)} t={t}/>)}
-      {tab==='security'&&<SecurityTab t={t} onLock={()=>{setLocked(true);setTabUnlocked(false);}} credit={credit} onSaveCredit={async(c)=>{setCredit(c);await dbSet('credit',c);}}/>}
-      {tab==='targets'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="Targets" onUnlock={()=>setTabUnlocked(true)}/>:<TargetsTab sheets={sheets} targets={targets} saveTargets={saveTargets} t={t}/>)}
-      {tab==='commission'&&(hasPwd&&!tabUnlocked?<TabPasswordGate t={t} tabName="Commission" onUnlock={()=>setTabUnlocked(true)}/>:<CommissionTab sheets={sheets} targets={targets} t={t} dark={dark}/>)}
+
+      {tab==='settings'&&(!tabUnlocked?<TabPasswordGate t={t} tabName="⚙ Settings" onUnlock={()=>setTabUnlocked(true)}/>:<SettingsTab sheets={sheets} sheetMeta={sheetMeta} onFileUpload={onFileUpload} onClearSheet={onClearSheet} gsheetUrls={gsheetUrls} setGsheetUrls={setGsheetUrls} gsheetStatus={gsheetStatus} onRefreshGSheets={()=>refreshFromGSheets(gsheetUrls)} t={t}/>)}
+      {tab==='security'&&(!tabUnlocked?<TabPasswordGate t={t} tabName="🔐 Security" onUnlock={()=>setTabUnlocked(true)}/>:<SecurityTab t={t} onLock={()=>setTabUnlocked(false)} credit={credit} onSaveCredit={async(c)=>{setCredit(c);await dbSet('credit',c);}}/>)}
+      {tab==='targets'&&(!tabUnlocked?<TabPasswordGate t={t} tabName="Targets" onUnlock={()=>setTabUnlocked(true)}/>:<TargetsTab sheets={sheets} targets={targets} saveTargets={saveTargets} t={t}/>)}
+      {tab==='commission'&&(!tabUnlocked?<TabPasswordGate t={t} tabName="Commission" onUnlock={()=>setTabUnlocked(true)}/>:<CommissionTab sheets={sheets} targets={targets} t={t} dark={dark}/>)}
       {tab==='reverse'&&<ReverseCalcTab allTx={allTx} targets={targets} sheets={sheets} t={t} dark={dark}/>}
       {tab==='support'&&<SupportPlanningTab sheets={sheets} targets={targets} saveTargets={saveTargets} t={t}/>}
       {tab==='pipeline'&&<PipelineTab s3={sheets.s3} sheets={sheets} t={t} dark={dark}/>}
