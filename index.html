@@ -2021,6 +2021,7 @@ function ReverseCalcTab({allTx,targets,sheets,t,dark}){
   const[avgDeal,setAvgDeal]=useState('');
   const[convRate,setConvRate]=useState('');
   const[daysToClose,setDaysToClose]=useState('');
+  const[onHand,setOnHand]=useState('');
 
   // Collected YTD for selected exec+year from Sheet2
   const collectedYTD=useMemo(()=>{
@@ -2030,7 +2031,8 @@ function ReverseCalcTab({allTx,targets,sheets,t,dark}){
 
   // Annual target from targets store
   const annualTarget=useMemo(()=>parseFloat(targets[`target_${selExec}_${selYear}`]||0),[targets,selExec,selYear]);
-  const remaining=Math.max(0,annualTarget-collectedYTD);
+  const onHandAmt=Math.max(0,parseFloat(onHand)||0);
+  const remaining=Math.max(0,annualTarget-collectedYTD-onHandAmt);
 
   // Working days left in year (rough: from today to Dec 31, minus weekends)
   const workingDaysLeft=useMemo(()=>{
@@ -2086,7 +2088,7 @@ function ReverseCalcTab({allTx,targets,sheets,t,dark}){
           </select>
         </div>
       </div>
-      {selExec&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:16}}>
+      {selExec&&<div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginTop:16}}>
         <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
           <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Annual Target</div>
           <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{annualTarget>0?`AED ${fmt(annualTarget)}`:'Not set'}</div>
@@ -2095,8 +2097,13 @@ function ReverseCalcTab({allTx,targets,sheets,t,dark}){
           <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Collected YTD</div>
           <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.success}}>AED {fmt(collectedYTD)}</div>
         </div>
+        <div style={{background:t.surface,borderRadius:8,padding:'12px 14px',border:`1px solid ${t.accent}44`}}>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Collection In Hand</div>
+          <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.accent}}>AED {fmt(onHandAmt)}</div>
+          <div style={{fontSize:10,color:t.muted,marginTop:3}}>Confirmed, not yet in sheet</div>
+        </div>
         <div style={{background:t.surface,borderRadius:8,padding:'12px 14px'}}>
-          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Remaining</div>
+          <div style={{fontSize:11,color:t.muted,marginBottom:4}}>Remaining Gap</div>
           <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:remaining>0?t.danger:t.success}}>{remaining>0?`AED ${fmt(remaining)}`:'Target met ✓'}</div>
           {annualTarget>0&&<div style={{marginTop:6}}>
             <div style={{background:t.border,borderRadius:4,height:5}}><div style={{height:5,borderRadius:4,background:statColor,width:`${Math.min(100,attPct)}%`,transition:'width .3s'}}/></div>
@@ -2124,6 +2131,11 @@ function ReverseCalcTab({allTx,targets,sheets,t,dark}){
           <input type="number" min="1" value={daysToClose} onChange={e=>setDaysToClose(e.target.value)} placeholder="e.g. 30" style={inp}/>
           <div style={{fontSize:11,color:t.muted,marginTop:4}}>Working days from first contact to payment</div>
         </div>
+      </div>
+      <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${t.border}`}}>
+        <label style={lbl}>Collection In Hand (AED) <span style={{fontWeight:400,color:t.muted}}>— confirmed collections not yet recorded in sheets</span></label>
+        <input type="number" min="0" value={onHand} onChange={e=>setOnHand(e.target.value)} placeholder="e.g. 50000" style={{...inp,maxWidth:300}}/>
+        {onHandAmt>0&&<div style={{fontSize:11,color:t.accent,marginTop:4}}>Reduces remaining gap by AED {fmt(onHandAmt)} → leads calculated on AED {fmt(remaining)}</div>}
       </div>
       {workingDaysLeft>0&&<div style={{marginTop:14,padding:'8px 12px',background:t.surface,borderRadius:8,fontSize:12,color:t.muted}}>
         📅 <strong style={{color:t.text}}>{workingDaysLeft}</strong> working days remaining in {selYear}
@@ -2250,13 +2262,14 @@ function App(){
           s5:(urls&&urls.s5)||DEFAULT_GSHEET_URLS.s5,
         };
         setGsheetUrls(activeUrls);
-        setBooting(false);
+        // Keep spinner visible until Google Sheets fetch completes — user sees data, not "Go To Settings"
         await refreshFromGSheets(activeUrls,true);
+        setBooting(false);
         return;
       }catch(e){console.error(e);}
       setHasPwd(true);
-      setBooting(false);
       await refreshFromGSheets(DEFAULT_GSHEET_URLS,true);
+      setBooting(false);
     }
     boot();
   },[]);
@@ -2354,7 +2367,16 @@ function App(){
       {tab==='pipeline'&&<PipelineTab s3={sheets.s3} sheets={sheets} t={t} dark={dark}/>}
       {tab==='performance'&&<PerformanceTab allTx={allTx} targets={targets} sheets={sheets} t={t}/>}
 
-      {(tab==='overview'||tab==='analysis')&&!hasData&&<div style={{textAlign:'center',padding:80,color:t.muted}}><div style={{fontSize:48,marginBottom:16}}>📊</div><div style={{fontSize:18,fontWeight:600,color:t.text,marginBottom:8}}>No data loaded</div><div style={{fontSize:14,marginBottom:20}}>Go to Settings to upload your CSV files.</div><Btn primary t={t} onClick={()=>setTab('settings')}>Go to Settings</Btn></div>}
+      {(tab==='overview'||tab==='analysis')&&!hasData&&<div style={{textAlign:'center',padding:80,color:t.muted}}>
+        <div style={{fontSize:48,marginBottom:16}}>📊</div>
+        <div style={{fontSize:18,fontWeight:600,color:t.text,marginBottom:8}}>No data loaded</div>
+        <div style={{fontSize:14,marginBottom:20,color:t.muted}}>Data is loading from Google Sheets. If it doesn't appear automatically, click Refresh.</div>
+        <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+          <Btn primary t={t} onClick={()=>refreshFromGSheets(gsheetUrls)}>🔄 Refresh Data</Btn>
+        </div>
+        {Object.values(gsheetStatus).some(s=>s==='error')&&<div style={{marginTop:16,fontSize:12,color:t.danger}}>⚠ Some sheets failed to load. Check your internet connection and try again.</div>}
+        {Object.values(gsheetStatus).some(s=>s==='loading')&&<div style={{marginTop:16,fontSize:12,color:t.accent}}>⟳ Loading from Google Sheets…</div>}
+      </div>}
 
       {(tab==='overview'||tab==='analysis')&&hasData&&<div style={{display:'flex',gap:16}}>
         <div style={{width:195,flexShrink:0}}>
@@ -2382,6 +2404,96 @@ function App(){
 }
 
 /* -- Renewals Planning Tab -- */
+/* ── Contracts View (Renewals Planning) ── */
+function ContractsView({detail,moName,t}){
+  const[filterMonth,setFilterMonth]=useState('');
+  const[filterType,setFilterType]=useState('');
+  const[sortDir,setSortDir]=useState(null); // null=default, 'asc', 'desc'
+
+  const months=useMemo(()=>[...new Set(detail.map(r=>r.month).filter(Boolean))].sort((a,b)=>a-b),[detail]);
+  const types=useMemo(()=>[...new Set(detail.map(r=>r.ctype).filter(Boolean))].sort(),[detail]);
+
+  const filtered=useMemo(()=>{
+    let rows=detail;
+    if(filterMonth)rows=rows.filter(r=>String(r.month)===String(filterMonth));
+    if(filterType)rows=rows.filter(r=>r.ctype===filterType);
+    if(sortDir==='asc')rows=[...rows].sort((a,b)=>a.amount-b.amount);
+    else if(sortDir==='desc')rows=[...rows].sort((a,b)=>b.amount-a.amount);
+    return rows;
+  },[detail,filterMonth,filterType,sortDir]);
+
+  const totalFull=filtered.reduce((s,r)=>s+r.amount,0);
+  const totalSI=filtered.reduce((s,r)=>s+r.entitledAmount,0);
+
+  return(<Card title="Contracts" t={t} style={{marginBottom:14}}>
+    <div style={{fontSize:12,color:t.muted,marginBottom:12}}>Full contract list. CAM Share column shows the ownership-adjusted amount counting toward the Customer Account Manager target.</div>
+    {/* Filters */}
+    <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:10}}>
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <span style={{fontSize:11,fontWeight:600,color:t.muted}}>Month:</span>
+        <button onClick={()=>setFilterMonth('')} style={{padding:'3px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:filterMonth===''?t.accent:'transparent',color:filterMonth===''?'#fff':t.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>All</button>
+        {months.map(m=>(
+          <button key={m} onClick={()=>setFilterMonth(filterMonth===String(m)?'':String(m))} style={{padding:'3px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:filterMonth===String(m)?t.accent:'transparent',color:filterMonth===String(m)?'#fff':t.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{moName(m)}</button>
+        ))}
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <span style={{fontSize:11,fontWeight:600,color:t.muted}}>Type:</span>
+        <button onClick={()=>setFilterType('')} style={{padding:'3px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:filterType===''?t.accent:'transparent',color:filterType===''?'#fff':t.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>All</button>
+        {types.map(tp=>(
+          <button key={tp} onClick={()=>setFilterType(filterType===tp?'':tp)} style={{padding:'3px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:filterType===tp?t.accent:'transparent',color:filterType===tp?'#fff':t.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{tp}</button>
+        ))}
+      </div>
+      <div style={{marginLeft:'auto',fontSize:11,color:t.muted}}>{filtered.length} of {detail.length} contracts</div>
+    </div>
+    {/* Table */}
+    <div style={{overflowX:'auto',maxHeight:520,border:`1px solid ${t.border}`,borderRadius:8}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+        <thead style={{position:'sticky',top:0,background:t.card,zIndex:2}}>
+          <tr>
+            {['Month','Account','Contract','Type'].map(l=><TH key={l} t={t}>{l}</TH>)}
+            <TH t={t} right>
+              <button onClick={()=>setSortDir(d=>d==='desc'?'asc':d==='asc'?null:'desc')}
+                style={{background:'none',border:'none',cursor:'pointer',color:t.muted,fontSize:12,fontWeight:600,fontFamily:"'DM Sans',sans-serif",display:'flex',alignItems:'center',gap:4,marginLeft:'auto'}}>
+                Full Amount {sortDir==='desc'?'↓':sortDir==='asc'?'↑':'↕'}
+              </button>
+            </TH>
+            {['CAM Share','Renewal #','Status','Owner'].map(l=><TH key={l} t={t} right={['CAM Share'].includes(l)}>{l}</TH>)}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((r,i)=>{
+            const sc=r.status==='Active'?t.success:r.status==='Due'?t.warning:t.danger;
+            const rc=r.renewalCount;
+            const rcColor=rc===0?t.warning:rc===1?t.accent:t.success;
+            return(<tr key={i} style={{borderBottom:`1px solid ${t.border}`,background:i%2===0?'transparent':t.surface}}>
+              <TD t={t}><Badge text={moName(r.month)} type="blue"/></TD>
+              <TD t={t} style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.account}</TD>
+              <TD t={t} color={t.muted}>{r.contract}</TD>
+              <TD t={t}><Badge text={r.ctype||'?'} type={r.ctype==='AMC'?'purple':'green'}/></TD>
+              <TD t={t} mono right color={t.muted}>AED {fmt(r.amount)}</TD>
+              <TD t={t} mono right>
+                <span style={{color:t.text,fontFamily:"'DM Mono',monospace"}}>AED {fmt(r.entitledAmount)}</span>
+                <span style={{fontSize:10,color:rcColor,marginLeft:4,fontWeight:700}}>{r.ownerPctLabel}</span>
+              </TD>
+              <TD t={t}>
+                <span style={{fontSize:11,fontWeight:700,color:rcColor,fontFamily:"'DM Mono',monospace"}}>
+                  {'Y'+(rc+1)+' ('+r.ownerPctLabel+')'}
+                </span>
+              </TD>
+              <TD t={t}><span style={{fontSize:11,fontWeight:600,color:sc}}>{r.status||'-'}</span></TD>
+              <TD t={t} color={t.muted}>{r.owner}</TD>
+            </tr>);
+          })}
+          {filtered.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:'center',color:t.muted,fontSize:13}}>No contracts match the selected filters.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div style={{fontSize:11,color:t.muted,marginTop:8}}>
+      {filtered.length} contracts · Full Value: AED {fmt(totalFull)} · CAM Share: AED {fmt(totalSI)}
+    </div>
+  </Card>);
+}
+
 function SupportPlanningTab({sheets,targets,saveTargets,t}){
   const curYear=new Date().getFullYear();
   const[selYear,setSelYear]=useState(curYear);
@@ -2416,6 +2528,8 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
         if(!isNaN(dd)&&!isNaN(mm)&&!isNaN(yyyy)){expiryMonth=mm;expiryYear=yyyy;}
       }
     }
+    // If year still not resolved, fall back to selYear so contracts aren't silently dropped
+    if(!expiryYear||expiryYear<2000)expiryYear=selYear;
     // Jan 1-10 of next year counts as Q4 of current year
     const isNextYearJanEarly=expiryMonth===1&&expiryYear===(selYear+1)&&(()=>{
       if(edStr){const p=edStr.split('/');if(p.length===3)return parseInt(p[0])<=10;}
@@ -2447,12 +2561,9 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
   }).filter(r=>r.owner&&r.amount>0),[sheets.s5,selYear]);
 
   const s5Owners=useMemo(()=>{
-    // All Support Incharges from Sheet 4 — shown regardless of whether they have Sheet 5 contracts or Sheet 2 collections
-    const siNames=[...new Set(buildOrg(sheets.s4).list
-      .filter(p=>p.role&&(p.role.toLowerCase().includes('support incharge')||p.role.toLowerCase().includes('support in-charge')))
-      .map(p=>p.name.trim()))];
-    return siNames.sort();
-  },[sheets.s4]);
+    // Strictly from Sheet 5 column J (User) — no Sheet 4 dependency
+    return [...new Set(sheets.s5.map(r=>(r.User||'').trim()).filter(Boolean))].sort();
+  },[sheets.s5]);
 
   // Two buckets per employee: renewals collected + total collected (all streams)
   const collectedByOwner=useMemo(()=>{
@@ -2527,28 +2638,30 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
     }).catch(()=>saveTargets(updates));
   });
 
-  // Branch Cash Flow: ALL Sheet 5 rows, no owner filter, full contract values
+  // Branch Cash Flow: All CAMs = full contract value; specific CAM = their ownership share
   const branchCashFlow=useMemo(()=>{
+    const rows=selPerson?s5.filter(r=>r.owner===selPerson):s5;
     const m={};
-    sheets.s5.forEach(r=>{
-      const br=(r.Branch||r['Parent Branch']||'Unknown').trim();
-      const amt=parseAmt(r['Sales License Price AED']||0);
-      const mo=parseInt(r.Month||0);
+    rows.forEach(r=>{
+      const br=(r.branch||r.parentBranch||'Unknown').trim()||'Unknown';
+      const amt=selPerson?r.entitledAmount:r.amount;
+      const mo=r.month;
       if(!amt)return;
       if(!m[br])m[br]={branch:br,total:0,count:0,byMonth:{},byMonthCount:{}};
       m[br].total+=amt;
       m[br].count++;
-      if(mo){if(!m[br].byMonth[mo])m[br].byMonth[mo]=0; m[br].byMonth[mo]+=amt; if(!m[br].byMonthCount[mo])m[br].byMonthCount[mo]=0; m[br].byMonthCount[mo]++;}
+      if(mo){if(!m[br].byMonth[mo])m[br].byMonth[mo]=0;m[br].byMonth[mo]+=amt;if(!m[br].byMonthCount[mo])m[br].byMonthCount[mo]=0;m[br].byMonthCount[mo]++;}
     });
     return Object.values(m).sort((a,b)=>b.total-a.total);
-  },[sheets.s5]);
+  },[s5,selPerson]);
 
   const vis=useMemo(()=>selPerson?summary.filter(r=>r.name===selPerson):summary,[summary,selPerson]);
+  // kFull: All CAMs = full contract value (col W); specific CAM = their ownership share
   const kFull=useMemo(()=>{
-    const rows=selPerson?sheets.s5.filter(r=>(r.User||r.CSOwner||'').trim().toLowerCase()===selPerson.toLowerCase()):sheets.s5;
-    return rows.reduce((s,r)=>s+parseAmt(r['Sales License Price AED']||0),0);
-  },[sheets.s5,selPerson]);
-  const kE=vis.reduce((s,r)=>s+r.totalRenewals,0);
+    if(!selPerson) return s5.reduce((s,r)=>s+r.amount,0);
+    return s5.filter(r=>r.owner.toLowerCase()===selPerson.toLowerCase()).reduce((s,r)=>s+r.entitledAmount,0);
+  },[s5,selPerson]);
+  const kFullRaw=kFull; // kept for subtitle reference
   const kRC=useMemo(()=>{
     const owners=selPerson
       ?[...(new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(n=>n.toLowerCase()===selPerson.toLowerCase())))]
@@ -2561,14 +2674,20 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
       :[...new Set(sheets.s5.map(r=>(r.User||r.CSOwner||'').trim()).filter(Boolean))];
     return owners.reduce((s,n)=>s+(collectedByOwner[n.toLowerCase()]||{total:0}).total,0);
   },[sheets.s5,selPerson,collectedByOwner]);
-  const kStill=Math.max(0,kFull-kRC);
+  const kStill=Math.max(0,kFull-kRC); // SI-share pipeline minus renewals collected
   const kD=vis.reduce((s,r)=>s+r.deficit,0);
   const hasTargets=vis.some(r=>r.annTarget>0);
 
   const schedule=useMemo(()=>{
     const rows=selPerson?s5.filter(r=>r.owner===selPerson):s5;
     const m={};
-    rows.forEach(r=>{if(!r.month)return;if(!m[r.month])m[r.month]={month:r.month,label:moName(r.month),amount:0,count:0};m[r.month].amount+=r.amount;m[r.month].count++;});
+    rows.forEach(r=>{
+      if(!r.month)return;
+      if(!m[r.month])m[r.month]={month:r.month,label:moName(r.month),amount:0,count:0};
+      // All CAMs = full contract value; specific CAM = their ownership share
+      m[r.month].amount+=selPerson?r.entitledAmount:r.amount;
+      m[r.month].count++;
+    });
     return Object.values(m).sort((a,b)=>a.month-b.month);
   },[s5,selPerson]);
 
@@ -2584,14 +2703,14 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
   return(<div style={{maxWidth:1200}}>
     <div style={{marginBottom:16}}>
       <div style={{fontSize:18,fontWeight:700,color:t.text,marginBottom:4}}>Renewals Planning</div>
-      <div style={{fontSize:13,color:t.muted}}>Renewal pipeline vs annual target per Support Incharge. Sheet 5 contracts vs what is already collected in Sheet 2 this year.</div>
+      <div style={{fontSize:13,color:t.muted}}>Renewal pipeline vs annual target per CAM (Customer Account Manager). Sheet 5 contracts vs what is already collected in Sheet 2 this year.</div>
     </div>
     <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
       <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} style={ii}>
         {[curYear-1,curYear,curYear+1].map(y=><option key={y} value={y}>{y}</option>)}
       </select>
       <select value={selPerson} onChange={e=>setSelPerson(e.target.value)} style={{...ii,minWidth:200}}>
-        <option value="">All Support Incharges</option>
+        <option value="">All CAMs</option>
         {s5Owners.map(o=><option key={o} value={o}>{o}</option>)}
       </select>
       <div style={{display:'flex',background:t.surface,border:'1px solid '+t.border,borderRadius:8,overflow:'hidden'}}>
@@ -2602,9 +2721,9 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:16}}>
       <div style={{background:t.card,border:'1px solid '+t.border,borderRadius:10,padding:'12px 16px'}}>
-        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Total Renewal Pipeline</div>
+        <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Total Renewal Pipeline (CAM Share)</div>
         <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>AED {fmt(kFull)}</div>
-        <div style={{fontSize:11,color:t.muted,marginTop:2}}>SI share: AED {fmt(kE)} ({vis.reduce((s,r)=>s+r.count,0)} contracts)</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>{selPerson?'CAM ownership share':'Full contract value'} · {(selPerson?s5.filter(r=>r.owner.toLowerCase()===selPerson.toLowerCase()):s5).length} contracts</div>
       </div>
       <div style={{background:t.card,border:'1px solid '+t.success,borderRadius:10,padding:'12px 16px'}}>
         <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Renewals Collected</div>
@@ -2619,7 +2738,7 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
       <div style={{background:t.card,border:'1px solid '+t.warning,borderRadius:10,padding:'12px 16px'}}>
         <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Pending Renewals of the year</div>
         <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.warning}}>AED {fmt(kStill)}</div>
-        <div style={{fontSize:11,color:t.muted,marginTop:2}}>Total pipeline minus renewals collected</div>
+        <div style={{fontSize:11,color:t.muted,marginTop:2}}>CAM share pipeline minus renewals collected</div>
       </div>
       <div style={{background:t.card,border:'1px solid '+(kD>0?t.danger:t.success),borderRadius:10,padding:'12px 16px'}}>
         <div style={{fontSize:10,fontWeight:700,color:t.muted,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>Deficit to Target</div>
@@ -2632,15 +2751,15 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
 
     {view==='summary'&&<Card title={'Summary - '+selYear+(selPerson?' - '+selPerson:' - All')} t={t} style={{marginBottom:14}}>
       <div style={{fontSize:12,color:t.muted,marginBottom:12,lineHeight:1.7}}>
-        <strong style={{color:t.text}}>Ownership split rule:</strong> Renewal #1 (count=0) SI gets 25%, Renewal #2 gets 50%, Renewal #3+ gets 100%.
+        <strong style={{color:t.text}}>Ownership split rule:</strong> Renewal #1 (count=0) CAM gets 25%, Renewal #2 gets 50%, Renewal #3+ gets 100%.
         Quarterly renewal targets are auto-saved to Targets tab from Sheet 5. Deficit = Personal Target minus (Total Collected + Pending Renewals of the year).
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
           <thead>
             <tr>
-              {['Support Incharge','Branch','Contracts','Team Renewal Tgt','SI Share','Q1 Renewal','Q2 Renewal','Q3 Renewal','Q4 Renewal','Renewals Collected','Total Collected','Pending Renewals of the year','Personal Target','Renewal Cover','Deficit'].map(l=>(
-                <TH key={l} t={t} right={!['Support Incharge','Branch'].includes(l)}>{l}</TH>
+              {['CAM','Branch','Contracts','Team Renewal Tgt','CAM Share','Q1','Q2','Q3','Q4','Renewals Collected','Total Collected','Pending','Personal Target','Coverage','Deficit'].map(l=>(
+                <TH key={l} t={t} right={!['CAM','Branch'].includes(l)}>{l}</TH>
               ))}
             </tr>
           </thead>
@@ -2693,46 +2812,8 @@ function SupportPlanningTab({sheets,targets,saveTargets,t}){
       </div>
     </Card>}
 
-    {view==='contracts'&&<Card title={'Contracts - '+(selPerson||'All')} t={t} style={{marginBottom:14}}>
-      <div style={{fontSize:12,color:t.muted,marginBottom:8}}>Full contract list. SI Share column shows the ownership-adjusted amount counting toward the Support Incharge target.</div>
-      <div style={{overflowX:'auto',maxHeight:520,border:'1px solid '+t.border,borderRadius:8}}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-          <thead style={{position:'sticky',top:0,background:t.card,zIndex:2}}>
-            <tr>{['Month','Account','Contract','Type','Full Amount','SI Share','Renewal #','Status','Owner'].map(l=>(
-              <TH key={l} t={t} right={['Full Amount','SI Share'].includes(l)}>{l}</TH>
-            ))}</tr>
-          </thead>
-          <tbody>
-            {detail.map((r,i)=>{
-              const sc=r.status==='Active'?t.success:r.status==='Due'?t.warning:t.danger;
-              const rc=r.renewalCount;
-              const rcColor=rc===0?t.warning:rc===1?t.accent:t.success;
-              return(<tr key={i} style={{borderBottom:'1px solid '+t.border,background:i%2===0?'transparent':t.surface}}>
-                <TD t={t}><Badge text={moName(r.month)} type="blue"/></TD>
-                <TD t={t} style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.account}</TD>
-                <TD t={t} color={t.muted}>{r.contract}</TD>
-                <TD t={t}><Badge text={r.ctype||'?'} type={r.ctype==='AMC'?'purple':'green'}/></TD>
-                <TD t={t} mono right color={t.muted}>AED {fmt(r.amount)}</TD>
-                <TD t={t} mono right>
-                  <span style={{color:t.text,fontFamily:"'DM Mono',monospace"}}>AED {fmt(r.entitledAmount)}</span>
-                  <span style={{fontSize:10,color:rcColor,marginLeft:4,fontWeight:700}}>{r.ownerPctLabel}</span>
-                </TD>
-                <TD t={t}>
-                  <span style={{fontSize:11,fontWeight:700,color:rcColor,fontFamily:"'DM Mono',monospace"}}>
-                    {'Y'+(rc+1)+' ('+r.ownerPctLabel+')'}
-                  </span>
-                </TD>
-                <TD t={t}><span style={{fontSize:11,fontWeight:600,color:sc}}>{r.status||'-'}</span></TD>
-                <TD t={t} color={t.muted}>{r.owner}</TD>
-              </tr>);
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div style={{fontSize:11,color:t.muted,marginTop:8}}>
-        {detail.length} contracts - Full Value: AED {fmt(detail.reduce((s,r)=>s+r.amount,0))} - SI Share: AED {fmt(detail.reduce((s,r)=>s+r.entitledAmount,0))}
-      </div>
-    </Card>}
+    {view==='contracts'&&<ContractsView detail={detail} moName={moName} t={t}/>}
+    
 
     {view==='cashflow'&&<Card title={'Branch Cash Flow Forecast - '+(selPerson||'All')} t={t} style={{marginBottom:14}}>
       <div style={{fontSize:12,color:t.muted,marginBottom:16,lineHeight:1.7}}>
