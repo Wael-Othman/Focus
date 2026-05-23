@@ -826,12 +826,62 @@ function TargetsTab({sheets,targets,saveTargets,t}){
   </div>);
 }
 
+/* ── Collection Detail Modal ── */
+function CollectionDetailModal({rows,title,onClose,t}){
+  const grouped=useMemo(()=>{
+    const m={};
+    rows.forEach(r=>{
+      const cust=r.Customer||r.customer||'Unknown';
+      const amt=parseAmt(r.Collection||r['Collection Amount']||r.Amount||0);
+      if(!m[cust])m[cust]={customer:cust,amount:0,count:0};
+      m[cust].amount+=amt;m[cust].count+=1;
+    });
+    return Object.values(m).sort((a,b)=>b.amount-a.amount);
+  },[rows]);
+  const total=grouped.reduce((s,g)=>s+g.amount,0);
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.card,border:`1px solid ${t.border}`,borderRadius:14,width:480,maxWidth:'95vw',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+          <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:4}}>{title}</div>
+          <div style={{fontSize:12,color:t.muted}}>{rows.length} transactions &nbsp;·&nbsp; {grouped.length} customers</div>
+        </div>
+        <div style={{overflowY:'auto',flex:1}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead style={{position:'sticky',top:0,background:t.card,zIndex:1}}>
+              <tr>
+                <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:t.muted,borderBottom:`1px solid ${t.border}`}}>Customer</th>
+                <th style={{padding:'8px 12px',textAlign:'right',fontWeight:600,color:t.muted,borderBottom:`1px solid ${t.border}`}}>Amount (AED)</th>
+                <th style={{padding:'8px 12px',textAlign:'center',fontWeight:600,color:t.muted,borderBottom:`1px solid ${t.border}`}}>Txns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map((g,i)=>(
+                <tr key={i} style={{background:i%2===0?'transparent':t.surface,borderBottom:`1px solid ${t.border}`}}>
+                  <td style={{padding:'7px 12px',color:t.text}}>{g.customer}</td>
+                  <td style={{padding:'7px 12px',textAlign:'right',fontFamily:"'DM Mono',monospace",color:t.success,fontWeight:600}}>{fmt(g.amount)}</td>
+                  <td style={{padding:'7px 12px',textAlign:'center',color:t.muted}}>{g.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{padding:'12px 20px',borderTop:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+          <span style={{fontSize:13,fontWeight:600,color:t.muted}}>Total</span>
+          <span style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.accent}}>AED {fmt(total)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CommissionTab({sheets,targets,t,dark}){
   const[sel,setSel]=useState('');
   const[year,setYear]=useState(new Date().getFullYear());
   const[qtr,setQtr]=useState('Q1');
   const[nsAmt,setNsAmt]=useState('');const[rnAmt,setRnAmt]=useState('');
   const[nsOverride,setNsOverride]=useState(false);const[rnOverride,setRnOverride]=useState(false);
+  const[showDetailFor,setShowDetailFor]=useState(null);
   const[nsStreams,setNsStreams]=useState(DEFAULT_NS_STREAMS);
   const[rnStreams,setRnStreams]=useState(DEFAULT_RN_STREAMS);
   const[showStreamEdit,setShowStreamEdit]=useState(false);
@@ -855,15 +905,18 @@ function CommissionTab({sheets,targets,t,dark}){
     });
     const isSalesConsultant=role.toLowerCase().includes('sales consultant');
     let ns,rn;
+    let nsRows,rnRows;
     if(isSalesConsultant){
-      // All collections into ns regardless of stream; rn forced to zero
-      ns=rows.filter(r=>qMos.includes(r.Month)).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
-      rn=0;
+      nsRows=rows.filter(r=>qMos.includes(r.Month));
+      ns=nsRows.reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+      rnRows=[];rn=0;
     }else{
-      ns=rows.filter(r=>qMos.includes(r.Month)&&nsStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim())).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
-      rn=rows.filter(r=>qMos.includes(r.Month)&&rnStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim())).reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+      nsRows=rows.filter(r=>qMos.includes(r.Month)&&nsStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim()));
+      ns=nsRows.reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
+      rnRows=rows.filter(r=>qMos.includes(r.Month)&&rnStreams.some(s=>s.toLowerCase()===(r.Stream||r.stream||'').toLowerCase().trim()));
+      rn=rnRows.reduce((s,r)=>s+parseAmt(r.Collection||r['Collection Amount']||r.Amount||0),0);
     }
-    return{ns,rn};
+    return{ns,rn,nsRows,rnRows};
   },[sel,year,qtr,role,sheets.s1,sheets.s2,nsStreams,rnStreams,curYear]);
 
   const ns=nsOverride?parseFloat(nsAmt)||0:autoCalc.ns;
@@ -1155,11 +1208,18 @@ function CommissionTab({sheets,targets,t,dark}){
         </div>
       </div>}
 
+      {showDetailFor==='ns'&&!nsOverride&&autoCalc.nsRows&&<CollectionDetailModal rows={autoCalc.nsRows} title={`Sales Collections — ${sel} · ${qtr} ${year}`} onClose={()=>setShowDetailFor(null)} t={t}/>}
+      {showDetailFor==='rn'&&!rnOverride&&autoCalc.rnRows&&<CollectionDetailModal rows={autoCalc.rnRows} title={`Renewal Collections — ${sel} · ${qtr} ${year}`} onClose={()=>setShowDetailFor(null)} t={t}/>}
       {/* Amount inputs */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
         <div>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-            <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Sales Collected QTD (AED)</label>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Sales Collected QTD (AED)</label>
+              {sel&&!nsOverride&&autoCalc.nsRows&&autoCalc.nsRows.length>0&&(
+                <button onClick={()=>setShowDetailFor('ns')} style={{background:'none',border:`1px solid ${t.border}`,borderRadius:5,fontSize:11,padding:'1px 6px',cursor:'pointer',color:t.accent,fontFamily:"'DM Sans',sans-serif"}}>📋 {autoCalc.nsRows.length}</button>
+              )}
+            </div>
             <span style={{fontSize:10,background:nsOverride?t.warning+'33':t.success+'33',color:nsOverride?t.warning:t.success,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{nsOverride?'Manual':'Auto'}</span>
           </div>
           <input type="number" value={nsAmt} onChange={e=>{setNsAmt(e.target.value);setNsOverride(true);}} placeholder="0" style={ii}/>
@@ -1169,7 +1229,12 @@ function CommissionTab({sheets,targets,t,dark}){
         </div>
         <div>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-            <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Renewals Collected QTD (AED)</label>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <label style={{fontSize:12,fontWeight:600,color:t.muted}}>Renewals Collected QTD (AED)</label>
+              {sel&&!rnOverride&&!role.toLowerCase().includes('sales consultant')&&autoCalc.rnRows&&autoCalc.rnRows.length>0&&(
+                <button onClick={()=>setShowDetailFor('rn')} style={{background:'none',border:`1px solid ${t.border}`,borderRadius:5,fontSize:11,padding:'1px 6px',cursor:'pointer',color:t.accent,fontFamily:"'DM Sans',sans-serif"}}>📋 {autoCalc.rnRows.length}</button>
+              )}
+            </div>
             {role.toLowerCase().includes('sales consultant')
               ? <span style={{fontSize:10,background:t.muted+'22',color:t.muted,borderRadius:4,padding:'1px 6px',fontWeight:600}}>N/A</span>
               : <span style={{fontSize:10,background:rnOverride?t.warning+'33':t.success+'33',color:rnOverride?t.warning:t.success,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{rnOverride?'Manual':'Auto'}</span>
