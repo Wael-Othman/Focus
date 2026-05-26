@@ -1260,13 +1260,98 @@ function getPersonInfo(s4, name) {
   };
 }
 
+/* ── Derive targets/salaries (Sheet 4) + renewal targets (Sheet 5) ──────────────
+   Produces the exact target keys the Commission/ReverseCalc/Performance tabs read:
+     target_NAME_YEAR  salary_NAME  team_TEAM_YEAR  branch_BRANCH_YEAR
+     renewals_q_NAME_YEAR_Qn  renewals_NAME_YEAR
+   Sheet 4 targets apply to the CURRENT year. Renewals use entitledAmount (owner split)
+   and the same nuanced quarter bucketing as the Renewals Planning tab. */
+function siOwnershipPctG(rc) {
+  var n = parseInt(rc) || 0;
+  if (n <= 0) return 1.0;
+  if (n === 1) return 0.5;
+  if (n === 2) return 0.25;
+  return 0.0;
+}
+function deriveTargetsFromSheets(s4, s5) {
+  var out = {};
+  var curY = new Date().getFullYear();
+  // ── Sheet 4: individual + team + branch targets, salaries ──
+  (s4 || []).forEach(function (r) {
+    var name = (r.Name || '').trim();
+    var type = (r.Type || '').trim().toLowerCase();
+    var tgt = parseAmt(r.Target || r.target || 0);
+    var sal = parseAmt(r.Salary || r.salary || 0);
+    if (!name) return;
+    if (type === 'team') {
+      if (tgt > 0) out['team_' + name + '_' + curY] = tgt;
+    } else if (type === 'branch') {
+      if (tgt > 0) out['branch_' + name + '_' + curY] = tgt;
+    } else {
+      // individual (or blank type = treat as individual)
+      if (tgt > 0) out['target_' + name + '_' + curY] = tgt;
+      if (sal > 0) out['salary_' + name] = sal;
+    }
+  });
+  // ── Sheet 5: renewal targets by owner, current year, entitledAmount w/ split ──
+  var qByOwner = {}; // owner -> {Q1,Q2,Q3,Q4}
+  (s5 || []).forEach(function (r) {
+    var owner = (r.User || r.CSOwner || '').trim();
+    if (!owner) return;
+    var amount = parseAmt(r['Sales License Price AED'] || 0);
+    if (!(amount > 0)) return;
+    var rc = parseInt(r['renewal count'] || r['Renewal Count'] || r['renewalcount'] || 0);
+    var salesOwner = (r['Sales Owner'] || '').trim();
+    var hasSplit = salesOwner !== '' && salesOwner.toLowerCase() !== owner.toLowerCase();
+    var sp = hasSplit ? siOwnershipPctG(rc) : 1.0;
+    var entitled = amount * sp;
+    // Year basis = "Year Period" column (the renewal cycle). Quarter = "Month" column (1-12).
+    var periodYear = parseInt((r['Year Period'] || '').toString().replace(/,/g, '') || 0);
+    if (periodYear !== curY) return; // only current-year renewals feed the current-year target
+    var m = parseInt(r.Month || 0);
+    var quarter = m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4';
+    if (!qByOwner[owner]) qByOwner[owner] = {
+      Q1: 0,
+      Q2: 0,
+      Q3: 0,
+      Q4: 0
+    };
+    qByOwner[owner][quarter] += entitled;
+  });
+  Object.entries(qByOwner).forEach(function (_ref4) {
+    var _ref5 = _slicedToArray(_ref4, 2),
+      owner = _ref5[0],
+      q = _ref5[1];
+    var ann = 0;
+    ['Q1', 'Q2', 'Q3', 'Q4'].forEach(function (qq) {
+      var v = Math.round(q[qq] || 0);
+      out['renewals_q_' + owner + '_' + curY + '_' + qq] = v;
+      ann += v;
+    });
+    out['renewals_' + owner + '_' + curY] = ann;
+  });
+  return out;
+}
+/* List Sheet 5 owners (User) with no exact match in Sheet 4 Name — for Data Quality */
+function renewalNameMismatches(s4, s5) {
+  var names = new Set((s4 || []).map(function (r) {
+    return (r.Name || '').trim();
+  }).filter(Boolean));
+  var owners = _toConsumableArray(new Set((s5 || []).map(function (r) {
+    return (r.User || r.CSOwner || '').trim();
+  }).filter(Boolean)));
+  return owners.filter(function (o) {
+    return !names.has(o);
+  }).sort();
+}
+
 /* ── Shared UI ── */
-function KPI(_ref4) {
-  var label = _ref4.label,
-    value = _ref4.value,
-    sub = _ref4.sub,
-    t = _ref4.t,
-    ac = _ref4.ac;
+function KPI(_ref6) {
+  var label = _ref6.label,
+    value = _ref6.value,
+    sub = _ref6.sub,
+    t = _ref6.t,
+    ac = _ref6.ac;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: t.card,
@@ -1298,13 +1383,13 @@ function KPI(_ref4) {
     }
   }, sub));
 }
-function Card(_ref5) {
-  var children = _ref5.children,
-    title = _ref5.title,
-    t = _ref5.t,
-    _ref5$style = _ref5.style,
-    style = _ref5$style === void 0 ? {} : _ref5$style,
-    action = _ref5.action;
+function Card(_ref7) {
+  var children = _ref7.children,
+    title = _ref7.title,
+    t = _ref7.t,
+    _ref7$style = _ref7.style,
+    style = _ref7$style === void 0 ? {} : _ref7$style,
+    action = _ref7.action;
   return /*#__PURE__*/React.createElement("div", {
     style: _objectSpread({
       background: t.card,
@@ -1329,10 +1414,10 @@ function Card(_ref5) {
     }
   }, title), action), children);
 }
-function Badge(_ref6) {
-  var text = _ref6.text,
-    _ref6$type = _ref6.type,
-    type = _ref6$type === void 0 ? 'blue' : _ref6$type;
+function Badge(_ref8) {
+  var text = _ref8.text,
+    _ref8$type = _ref8.type,
+    type = _ref8$type === void 0 ? 'blue' : _ref8$type;
   var m = {
     blue: {
       bg: '#dbeafe',
@@ -1373,12 +1458,12 @@ function Badge(_ref6) {
     }
   }, text);
 }
-function MiniBar(_ref7) {
-  var value = _ref7.value,
-    max = _ref7.max,
-    _ref7$color = _ref7.color,
-    color = _ref7$color === void 0 ? '#3b82f6' : _ref7$color,
-    t = _ref7.t;
+function MiniBar(_ref9) {
+  var value = _ref9.value,
+    max = _ref9.max,
+    _ref9$color = _ref9.color,
+    color = _ref9$color === void 0 ? '#3b82f6' : _ref9$color,
+    t = _ref9.t;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: t.surface,
@@ -1396,11 +1481,11 @@ function MiniBar(_ref7) {
     }
   }));
 }
-function Chip(_ref8) {
-  var label = _ref8.label,
-    active = _ref8.active,
-    onClick = _ref8.onClick,
-    t = _ref8.t;
+function Chip(_ref10) {
+  var label = _ref10.label,
+    active = _ref10.active,
+    onClick = _ref10.onClick,
+    t = _ref10.t;
   return /*#__PURE__*/React.createElement("span", {
     onClick: onClick,
     style: {
@@ -1417,10 +1502,10 @@ function Chip(_ref8) {
     }
   }, label);
 }
-function FG(_ref9) {
-  var label = _ref9.label,
-    children = _ref9.children,
-    t = _ref9.t;
+function FG(_ref11) {
+  var label = _ref11.label,
+    children = _ref11.children,
+    t = _ref11.t;
   var _useState3 = useState(true),
     _useState4 = _slicedToArray(_useState3, 2),
     o = _useState4[0],
@@ -1452,15 +1537,15 @@ function FG(_ref9) {
     }
   }, label, /*#__PURE__*/React.createElement("span", null, o ? '▾' : '▸')), o && /*#__PURE__*/React.createElement("div", null, children));
 }
-function Btn(_ref10) {
-  var children = _ref10.children,
-    onClick = _ref10.onClick,
-    primary = _ref10.primary,
-    t = _ref10.t,
-    disabled = _ref10.disabled,
-    _ref10$style = _ref10.style,
-    style = _ref10$style === void 0 ? {} : _ref10$style,
-    title = _ref10.title;
+function Btn(_ref12) {
+  var children = _ref12.children,
+    onClick = _ref12.onClick,
+    primary = _ref12.primary,
+    t = _ref12.t,
+    disabled = _ref12.disabled,
+    _ref12$style = _ref12.style,
+    style = _ref12$style === void 0 ? {} : _ref12$style,
+    title = _ref12.title;
   return /*#__PURE__*/React.createElement("button", {
     title: title,
     onClick: onClick,
@@ -1479,10 +1564,10 @@ function Btn(_ref10) {
     }, style)
   }, children);
 }
-function TH(_ref11) {
-  var children = _ref11.children,
-    t = _ref11.t,
-    right = _ref11.right;
+function TH(_ref13) {
+  var children = _ref13.children,
+    t = _ref13.t,
+    right = _ref13.right;
   return /*#__PURE__*/React.createElement("th", {
     style: {
       textAlign: right ? 'right' : 'left',
@@ -1497,15 +1582,15 @@ function TH(_ref11) {
     }
   }, children);
 }
-function TD(_ref12) {
-  var children = _ref12.children,
-    t = _ref12.t,
-    mono = _ref12.mono,
-    color = _ref12.color,
-    right = _ref12.right,
-    bold = _ref12.bold,
-    _ref12$style = _ref12.style,
-    style = _ref12$style === void 0 ? {} : _ref12$style;
+function TD(_ref14) {
+  var children = _ref14.children,
+    t = _ref14.t,
+    mono = _ref14.mono,
+    color = _ref14.color,
+    right = _ref14.right,
+    bold = _ref14.bold,
+    _ref14$style = _ref14.style,
+    style = _ref14$style === void 0 ? {} : _ref14$style;
   return /*#__PURE__*/React.createElement("td", {
     style: _objectSpread({
       padding: '7px 10px',
@@ -1518,15 +1603,15 @@ function TD(_ref12) {
     }, style)
   }, children);
 }
-function Inp(_ref13) {
-  var value = _ref13.value,
-    onChange = _ref13.onChange,
-    placeholder = _ref13.placeholder,
-    t = _ref13.t,
-    _ref13$style = _ref13.style,
-    style = _ref13$style === void 0 ? {} : _ref13$style,
-    _ref13$type = _ref13.type,
-    type = _ref13$type === void 0 ? 'text' : _ref13$type;
+function Inp(_ref15) {
+  var value = _ref15.value,
+    onChange = _ref15.onChange,
+    placeholder = _ref15.placeholder,
+    t = _ref15.t,
+    _ref15$style = _ref15.style,
+    style = _ref15$style === void 0 ? {} : _ref15$style,
+    _ref15$type = _ref15.type,
+    type = _ref15$type === void 0 ? 'text' : _ref15$type;
   return /*#__PURE__*/React.createElement("input", {
     type: type,
     value: value,
@@ -1544,13 +1629,13 @@ function Inp(_ref13) {
     }, style)
   });
 }
-function Sel(_ref14) {
-  var value = _ref14.value,
-    onChange = _ref14.onChange,
-    options = _ref14.options,
-    t = _ref14.t,
-    _ref14$style = _ref14.style,
-    style = _ref14$style === void 0 ? {} : _ref14$style;
+function Sel(_ref16) {
+  var value = _ref16.value,
+    onChange = _ref16.onChange,
+    options = _ref16.options,
+    t = _ref16.t,
+    _ref16$style = _ref16.style,
+    style = _ref16$style === void 0 ? {} : _ref16$style;
   return /*#__PURE__*/React.createElement("select", {
     value: value,
     onChange: onChange,
@@ -1563,10 +1648,10 @@ function Sel(_ref14) {
       color: t.text,
       fontFamily: "'DM Sans',sans-serif"
     }, style)
-  }, options.map(function (_ref15) {
-    var _ref16 = _slicedToArray(_ref15, 2),
-      v = _ref16[0],
-      l = _ref16[1];
+  }, options.map(function (_ref17) {
+    var _ref18 = _slicedToArray(_ref17, 2),
+      v = _ref18[0],
+      l = _ref18[1];
     return /*#__PURE__*/React.createElement("option", {
       key: v,
       value: v
@@ -1575,11 +1660,11 @@ function Sel(_ref14) {
 }
 
 /* ── AI Insights (calls Anthropic API) ── */
-function AIInsights(_ref17) {
-  var prompt = _ref17.prompt,
-    t = _ref17.t,
-    _ref17$label = _ref17.label,
-    label = _ref17$label === void 0 ? 'AI Insights' : _ref17$label;
+function AIInsights(_ref19) {
+  var prompt = _ref19.prompt,
+    t = _ref19.t,
+    _ref19$label = _ref19.label,
+    label = _ref19$label === void 0 ? 'AI Insights' : _ref19$label;
   var _useState5 = useState(''),
     _useState6 = _slicedToArray(_useState5, 2),
     text = _useState6[0],
@@ -1593,7 +1678,7 @@ function AIInsights(_ref17) {
     done = _useState10[0],
     setDone = _useState10[1];
   var run = /*#__PURE__*/function () {
-    var _ref18 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
+    var _ref20 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
       var encoded, res, txt, res2, d, txt2;
       return _regeneratorRuntime().wrap(function _callee$(_context) {
         while (1) switch (_context.prev = _context.next) {
@@ -1669,7 +1754,7 @@ function AIInsights(_ref17) {
       }, _callee, null, [[3, 17], [19, 31]]);
     }));
     return function run() {
-      return _ref18.apply(this, arguments);
+      return _ref20.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1755,9 +1840,9 @@ function AIInsights(_ref17) {
 }
 
 /* ── Password Gate ── */
-function PasswordGate(_ref19) {
-  var t = _ref19.t,
-    onUnlock = _ref19.onUnlock;
+function PasswordGate(_ref21) {
+  var t = _ref21.t,
+    onUnlock = _ref21.onUnlock;
   var _useState11 = useState(''),
     _useState12 = _slicedToArray(_useState11, 2),
     pwd = _useState12[0],
@@ -1767,7 +1852,7 @@ function PasswordGate(_ref19) {
     err = _useState14[0],
     setErr = _useState14[1];
   var check = /*#__PURE__*/function () {
-    var _ref20 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
+    var _ref22 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
       var h;
       return _regeneratorRuntime().wrap(function _callee2$(_context2) {
         while (1) switch (_context2.prev = _context2.next) {
@@ -1789,7 +1874,7 @@ function PasswordGate(_ref19) {
       }, _callee2);
     }));
     return function check() {
-      return _ref20.apply(this, arguments);
+      return _ref22.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1862,10 +1947,10 @@ function PasswordGate(_ref19) {
 }
 
 /* ── Tab Password Gate ── */
-function TabPasswordGate(_ref21) {
-  var t = _ref21.t,
-    tabName = _ref21.tabName,
-    onUnlock = _ref21.onUnlock;
+function TabPasswordGate(_ref23) {
+  var t = _ref23.t,
+    tabName = _ref23.tabName,
+    onUnlock = _ref23.onUnlock;
   var _useState15 = useState(''),
     _useState16 = _slicedToArray(_useState15, 2),
     pwd = _useState16[0],
@@ -1875,7 +1960,7 @@ function TabPasswordGate(_ref21) {
     err = _useState18[0],
     setErr = _useState18[1];
   var check = /*#__PURE__*/function () {
-    var _ref22 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee3() {
+    var _ref24 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee3() {
       var h;
       return _regeneratorRuntime().wrap(function _callee3$(_context3) {
         while (1) switch (_context3.prev = _context3.next) {
@@ -1897,7 +1982,7 @@ function TabPasswordGate(_ref21) {
       }, _callee3);
     }));
     return function check() {
-      return _ref22.apply(this, arguments);
+      return _ref24.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1986,11 +2071,11 @@ function TabPasswordGate(_ref21) {
 }
 
 /* ── Security Tab ── */
-function SecurityTab(_ref23) {
-  var t = _ref23.t,
-    onLock = _ref23.onLock,
-    credit = _ref23.credit,
-    onSaveCredit = _ref23.onSaveCredit;
+function SecurityTab(_ref25) {
+  var t = _ref25.t,
+    onLock = _ref25.onLock,
+    credit = _ref25.credit,
+    onSaveCredit = _ref25.onSaveCredit;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       maxWidth: 460
@@ -2031,10 +2116,10 @@ function SecurityTab(_ref23) {
     onSave: onSaveCredit
   })));
 }
-function CreditEditor(_ref24) {
-  var t = _ref24.t,
-    credit = _ref24.credit,
-    onSave = _ref24.onSave;
+function CreditEditor(_ref26) {
+  var t = _ref26.t,
+    credit = _ref26.credit,
+    onSave = _ref26.onSave;
   var _useState19 = useState(''),
     _useState20 = _slicedToArray(_useState19, 2),
     cpwd = _useState20[0],
@@ -2056,7 +2141,7 @@ function CreditEditor(_ref24) {
     unlocked = _useState28[0],
     setUnlocked = _useState28[1];
   var verify = /*#__PURE__*/function () {
-    var _ref25 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee4() {
+    var _ref27 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee4() {
       var h;
       return _regeneratorRuntime().wrap(function _callee4$(_context4) {
         while (1) switch (_context4.prev = _context4.next) {
@@ -2079,11 +2164,11 @@ function CreditEditor(_ref24) {
       }, _callee4);
     }));
     return function verify() {
-      return _ref25.apply(this, arguments);
+      return _ref27.apply(this, arguments);
     };
   }();
   var save = /*#__PURE__*/function () {
-    var _ref26 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
+    var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
       return _regeneratorRuntime().wrap(function _callee5$(_context5) {
         while (1) switch (_context5.prev = _context5.next) {
           case 0:
@@ -2104,7 +2189,7 @@ function CreditEditor(_ref24) {
       }, _callee5);
     }));
     return function save() {
-      return _ref26.apply(this, arguments);
+      return _ref28.apply(this, arguments);
     };
   }();
   var ii = {
@@ -2208,16 +2293,16 @@ function CreditEditor(_ref24) {
 }
 
 /* ── Settings Tab ── */
-function SettingsTab(_ref27) {
-  var sheets = _ref27.sheets,
-    sheetMeta = _ref27.sheetMeta,
-    onFileUpload = _ref27.onFileUpload,
-    onClearSheet = _ref27.onClearSheet,
-    gsheetUrls = _ref27.gsheetUrls,
-    setGsheetUrls = _ref27.setGsheetUrls,
-    gsheetStatus = _ref27.gsheetStatus,
-    onRefreshGSheets = _ref27.onRefreshGSheets,
-    t = _ref27.t;
+function SettingsTab(_ref29) {
+  var sheets = _ref29.sheets,
+    sheetMeta = _ref29.sheetMeta,
+    onFileUpload = _ref29.onFileUpload,
+    onClearSheet = _ref29.onClearSheet,
+    gsheetUrls = _ref29.gsheetUrls,
+    setGsheetUrls = _ref29.setGsheetUrls,
+    gsheetStatus = _ref29.gsheetStatus,
+    onRefreshGSheets = _ref29.onRefreshGSheets,
+    t = _ref29.t;
   var _useState29 = useState(null),
     _useState30 = _slicedToArray(_useState29, 2),
     drag = _useState30[0],
@@ -2257,7 +2342,7 @@ function SettingsTab(_ref27) {
   };
   var urlsChanged = JSON.stringify(localUrls) !== JSON.stringify(gsheetUrls);
   var saveUrls = /*#__PURE__*/function () {
-    var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6() {
+    var _ref30 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6() {
       return _regeneratorRuntime().wrap(function _callee6$(_context6) {
         while (1) switch (_context6.prev = _context6.next) {
           case 0:
@@ -2279,7 +2364,7 @@ function SettingsTab(_ref27) {
       }, _callee6);
     }));
     return function saveUrls() {
-      return _ref28.apply(this, arguments);
+      return _ref30.apply(this, arguments);
     };
   }();
   var SHEET_NAMES = ['Sheet 1 (Historical)', 'Sheet 2 (Current Year)', 'Sheet 3 (Pipeline)', 'Sheet 4 (Org)', 'Sheet 5 (Contracts)'];
@@ -2289,7 +2374,7 @@ function SettingsTab(_ref27) {
 
   // ── Download Updated File ─────────────────────────────────────────────────
   var downloadUpdatedFile = /*#__PURE__*/function () {
-    var _ref29 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7() {
+    var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7() {
       var src, res, newBlock, updated, blob, a;
       return _regeneratorRuntime().wrap(function _callee7$(_context7) {
         while (1) switch (_context7.prev = _context7.next) {
@@ -2338,7 +2423,7 @@ function SettingsTab(_ref27) {
       }, _callee7, null, [[1, 10]]);
     }));
     return function downloadUpdatedFile() {
-      return _ref29.apply(this, arguments);
+      return _ref31.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -2826,8 +2911,8 @@ function SettingsTab(_ref27) {
     t: t
   }));
 }
-function GoogleSheetsTester(_ref30) {
-  var t = _ref30.t;
+function GoogleSheetsTester(_ref32) {
+  var t = _ref32.t;
   var _useState39 = useState(''),
     _useState40 = _slicedToArray(_useState39, 2),
     url = _useState40[0],
@@ -2858,7 +2943,7 @@ function GoogleSheetsTester(_ref30) {
     }
   }];
   var test = /*#__PURE__*/function () {
-    var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8() {
+    var _ref33 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8() {
       var _i, _PROXIES, proxy, fetchUrl, res, text, lines, headers, preview;
       return _regeneratorRuntime().wrap(function _callee8$(_context8) {
         while (1) switch (_context8.prev = _context8.next) {
@@ -2941,7 +3026,7 @@ function GoogleSheetsTester(_ref30) {
       }, _callee8, null, [[7, 26]]);
     }));
     return function test() {
-      return _ref31.apply(this, arguments);
+      return _ref33.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3076,11 +3161,11 @@ function GoogleSheetsTester(_ref30) {
 }
 
 /* ── Targets Tab ── */
-function TargetsTab(_ref32) {
-  var sheets = _ref32.sheets,
-    targets = _ref32.targets,
-    saveTargets = _ref32.saveTargets,
-    t = _ref32.t;
+function TargetsTab(_ref34) {
+  var sheets = _ref34.sheets,
+    targets = _ref34.targets,
+    saveTargets = _ref34.saveTargets,
+    t = _ref34.t;
   var _useState43 = useState(new Date().getFullYear()),
     _useState44 = _slicedToArray(_useState43, 2),
     year = _useState44[0],
@@ -3393,9 +3478,9 @@ function TargetsTab(_ref32) {
         return setT(kb, e.target.value);
       },
       style: ii
-    })), QTRS.map(function (_ref33) {
-      var q = _ref33.q,
-        w = _ref33.w;
+    })), QTRS.map(function (_ref35) {
+      var q = _ref35.q,
+        w = _ref35.w;
       return /*#__PURE__*/React.createElement(TD, {
         key: q,
         t: t,
@@ -3473,9 +3558,9 @@ function TargetsTab(_ref32) {
         return setT(k, e.target.value);
       },
       style: ii
-    })), QTRS.map(function (_ref34) {
-      var q = _ref34.q,
-        w = _ref34.w;
+    })), QTRS.map(function (_ref36) {
+      var q = _ref36.q,
+        w = _ref36.w;
       return /*#__PURE__*/React.createElement(TD, {
         key: q,
         t: t,
@@ -3580,8 +3665,8 @@ function TargetsTab(_ref32) {
     }
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement(TH, {
     t: t
-  }, "Executive"), QTRS.map(function (_ref35) {
-    var q = _ref35.q;
+  }, "Executive"), QTRS.map(function (_ref37) {
+    var q = _ref37.q;
     return [/*#__PURE__*/React.createElement(TH, {
       key: q + "r",
       t: t
@@ -3603,8 +3688,8 @@ function TargetsTab(_ref32) {
         whiteSpace: "nowrap",
         fontSize: 12
       }
-    }, name), QTRS.map(function (_ref36) {
-      var q = _ref36.q;
+    }, name), QTRS.map(function (_ref38) {
+      var q = _ref38.q;
       return [/*#__PURE__*/React.createElement(TD, {
         key: q + "r",
         t: t
@@ -3652,11 +3737,11 @@ function TargetsTab(_ref32) {
 }
 
 /* ── Collection Detail Modal ── */
-function CollectionDetailModal(_ref37) {
-  var rows = _ref37.rows,
-    title = _ref37.title,
-    onClose = _ref37.onClose,
-    t = _ref37.t;
+function CollectionDetailModal(_ref39) {
+  var rows = _ref39.rows,
+    title = _ref39.title,
+    onClose = _ref39.onClose,
+    t = _ref39.t;
   useEffect(function () {
     var h = function h(e) {
       if (e.key === 'Escape') onClose();
@@ -3823,11 +3908,11 @@ function CollectionDetailModal(_ref37) {
     }
   }, "AED ", fmt(total)))));
 }
-function CommissionTab(_ref38) {
-  var sheets = _ref38.sheets,
-    targets = _ref38.targets,
-    t = _ref38.t,
-    dark = _ref38.dark;
+function CommissionTab(_ref40) {
+  var sheets = _ref40.sheets,
+    targets = _ref40.targets,
+    t = _ref40.t,
+    dark = _ref40.dark;
   var _useState49 = useState(function () {
       try {
         return localStorage.getItem('ciq_comm_sel') || '';
@@ -4261,11 +4346,11 @@ function CommissionTab(_ref38) {
   var debugMsg = sel && !role ? '⚠️ Employee found but Role is empty in Sheet 4' : sel && role && !['support head', 'support incharge', 'support in-charge', 'regional sales head', 'rsm', 'sales manager', 'manager', 'sales consultant', 'consultant'].some(function (r) {
     return role.toLowerCase().includes(r);
   }) ? "\u26A0\uFE0F Role \"".concat(role, "\" not recognised \u2014 check Sheet 4 spelling") : '';
-  function CRow(_ref39) {
-    var label = _ref39.label,
-      amount = _ref39.amount,
-      note = _ref39.note,
-      warn = _ref39.warn;
+  function CRow(_ref41) {
+    var label = _ref41.label,
+      amount = _ref41.amount,
+      note = _ref41.note,
+      warn = _ref41.warn;
     return /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
@@ -4451,11 +4536,11 @@ function CommissionTab(_ref38) {
       gap: 10,
       marginBottom: 14
     }
-  }, [['Annual Target', "AED ".concat(fmt(annTarget)), t.muted], ["".concat(qtr, " Total Target"), "AED ".concat(fmt(qTotalTgt)), t.text], ["".concat(qtr, " Sales Target"), "AED ".concat(fmt(qSalesTgt)), t.accent], ["".concat(qtr, " Renewal Target"), "AED ".concat(fmt(qRenewTgt)), '#10b981'], ["Sales Collected", "AED ".concat(fmt(ns)), ns >= qSalesTgt && qSalesTgt > 0 ? t.success : t.text], ["Renewals Collected", "AED ".concat(fmt(rn)), rn >= qRenewTgt && qRenewTgt > 0 ? t.success : t.text]].map(function (_ref40) {
-    var _ref41 = _slicedToArray(_ref40, 3),
-      lbl = _ref41[0],
-      val = _ref41[1],
-      col = _ref41[2];
+  }, [['Annual Target', "AED ".concat(fmt(annTarget)), t.muted], ["".concat(qtr, " Total Target"), "AED ".concat(fmt(qTotalTgt)), t.text], ["".concat(qtr, " Sales Target"), "AED ".concat(fmt(qSalesTgt)), t.accent], ["".concat(qtr, " Renewal Target"), "AED ".concat(fmt(qRenewTgt)), '#10b981'], ["Sales Collected", "AED ".concat(fmt(ns)), ns >= qSalesTgt && qSalesTgt > 0 ? t.success : t.text], ["Renewals Collected", "AED ".concat(fmt(rn)), rn >= qRenewTgt && qRenewTgt > 0 ? t.success : t.text]].map(function (_ref42) {
+    var _ref43 = _slicedToArray(_ref42, 3),
+      lbl = _ref43[0],
+      val = _ref43[1],
+      col = _ref43[2];
     return /*#__PURE__*/React.createElement("div", {
       key: lbl,
       style: {
@@ -4485,11 +4570,11 @@ function CommissionTab(_ref38) {
       gap: 10,
       marginBottom: 14
     }
-  }, [["Sales vs ".concat(qtr, " Sales Tgt"), result.qSalesPct, t.accent], ["Renewals vs ".concat(qtr, " Renewal Tgt"), result.rnPct, '#10b981'], ["Total vs ".concat(qtr, " Total Tgt"), result.qTotalPct, '#8b5cf6']].map(function (_ref42) {
-    var _ref43 = _slicedToArray(_ref42, 3),
-      lbl = _ref43[0],
-      val = _ref43[1],
-      col = _ref43[2];
+  }, [["Sales vs ".concat(qtr, " Sales Tgt"), result.qSalesPct, t.accent], ["Renewals vs ".concat(qtr, " Renewal Tgt"), result.rnPct, '#10b981'], ["Total vs ".concat(qtr, " Total Tgt"), result.qTotalPct, '#8b5cf6']].map(function (_ref44) {
+    var _ref45 = _slicedToArray(_ref44, 3),
+      lbl = _ref45[0],
+      val = _ref45[1],
+      col = _ref45[2];
     return /*#__PURE__*/React.createElement("div", {
       key: lbl,
       style: {
@@ -4896,9 +4981,9 @@ function CommissionTab(_ref38) {
 }
 
 /* ── Commission Code Editor ── */
-function CommissionCodeEditor(_ref44) {
-  var t = _ref44.t,
-    dark = _ref44.dark;
+function CommissionCodeEditor(_ref46) {
+  var t = _ref46.t,
+    dark = _ref46.dark;
   var _useState73 = useState(''),
     _useState74 = _slicedToArray(_useState73, 2),
     code = _useState74[0],
@@ -5012,11 +5097,11 @@ function CommissionCodeEditor(_ref44) {
 }
 
 /* ── Pipeline Tab ── */
-function PipelineTab(_ref45) {
-  var s3 = _ref45.s3,
-    sheets = _ref45.sheets,
-    t = _ref45.t,
-    dark = _ref45.dark;
+function PipelineTab(_ref47) {
+  var s3 = _ref47.s3,
+    sheets = _ref47.sheets,
+    t = _ref47.t,
+    dark = _ref47.dark;
   var tt = {
     background: t.card,
     border: "1px solid ".concat(t.border),
@@ -5160,10 +5245,10 @@ function PipelineTab(_ref45) {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref46) {
-      var _ref47 = _slicedToArray(_ref46, 2),
-        name = _ref47[0],
-        value = _ref47[1];
+    }).map(function (_ref48) {
+      var _ref49 = _slicedToArray(_ref48, 2),
+        name = _ref49[0],
+        value = _ref49[1];
       return {
         name: name,
         value: value
@@ -5441,9 +5526,9 @@ function PipelineTab(_ref45) {
 }
 
 /* ── Pipeline Raw Data Sheet ── */
-function PipelineRawSheet(_ref48) {
-  var s3 = _ref48.s3,
-    t = _ref48.t;
+function PipelineRawSheet(_ref50) {
+  var s3 = _ref50.s3,
+    t = _ref50.t;
   var _useState91 = useState(''),
     _useState92 = _slicedToArray(_useState91, 2),
     search = _useState92[0],
@@ -5676,11 +5761,11 @@ function PipelineRawSheet(_ref48) {
 }
 
 /* ── Performance Tab ── */
-function PerformanceTab(_ref49) {
-  var allTx = _ref49.allTx,
-    targets = _ref49.targets,
-    sheets = _ref49.sheets,
-    t = _ref49.t;
+function PerformanceTab(_ref51) {
+  var allTx = _ref51.allTx,
+    targets = _ref51.targets,
+    sheets = _ref51.sheets,
+    t = _ref51.t;
   var _useState99 = useState(function () {
       try {
         var v = localStorage.getItem('ciq_perf_year');
@@ -5843,11 +5928,11 @@ function PerformanceTab(_ref49) {
 
   // ── Build the full grouped structure (branch → team → employees) ──────────
   var groupedData = useMemo(function () {
-    var _ref50;
+    var _ref52;
     var curYr = String(selYear);
     var qMos = Q_MONTHS[selQtr] || [];
     var qIdx = ['Q1', 'Q2', 'Q3', 'Q4'].indexOf(selQtr);
-    var ytdMos = (_ref50 = []).concat.apply(_ref50, _toConsumableArray(['Q1', 'Q2', 'Q3', 'Q4'].slice(0, qIdx + 1).map(function (q) {
+    var ytdMos = (_ref52 = []).concat.apply(_ref52, _toConsumableArray(['Q1', 'Q2', 'Q3', 'Q4'].slice(0, qIdx + 1).map(function (q) {
       return Q_MONTHS[q];
     })));
     var baseTx = allTx.filter(function (r) {
@@ -6119,10 +6204,10 @@ function PerformanceTab(_ref49) {
       borderRadius: 8,
       overflow: 'hidden'
     }
-  }, [['monthly', '📅 Monthly'], ['employee', '👤 Performance'], ['compare', '📊 Year Comparison'], ['org', '🌳 Org View']].map(function (_ref51) {
-    var _ref52 = _slicedToArray(_ref51, 2),
-      v = _ref52[0],
-      l = _ref52[1];
+  }, [['monthly', '📅 Monthly'], ['employee', '👤 Performance'], ['compare', '📊 Year Comparison'], ['org', '🌳 Org View']].map(function (_ref53) {
+    var _ref54 = _slicedToArray(_ref53, 2),
+      v = _ref54[0],
+      l = _ref54[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -6205,10 +6290,10 @@ function PerformanceTab(_ref49) {
       flexDirection: 'column',
       gap: 4
     }
-  }, [['branch', '🏢 Branch'], ['team', '👥 Team'], ['employee', '👤 Employee']].map(function (_ref53) {
-    var _ref54 = _slicedToArray(_ref53, 2),
-      v = _ref54[0],
-      l = _ref54[1];
+  }, [['branch', '🏢 Branch'], ['team', '👥 Team'], ['employee', '👤 Employee']].map(function (_ref55) {
+    var _ref56 = _slicedToArray(_ref55, 2),
+      v = _ref56[0],
+      l = _ref56[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -6783,11 +6868,11 @@ function PerformanceTab(_ref49) {
 
 /* ── Overview Tab ── */
 /* ── Alerts Banner ── */
-function AlertsBanner(_ref55) {
-  var filtered = _ref55.filtered,
-    sheets = _ref55.sheets,
-    targets = _ref55.targets,
-    t = _ref55.t;
+function AlertsBanner(_ref57) {
+  var filtered = _ref57.filtered,
+    sheets = _ref57.sheets,
+    targets = _ref57.targets,
+    t = _ref57.t;
   var _useState117 = useState(50),
     _useState118 = _slicedToArray(_useState117, 2),
     attThresh = _useState118[0],
@@ -6851,13 +6936,13 @@ function AlertsBanner(_ref55) {
       var score = r._year * 100 + (MONTHS.indexOf(r.Month) + 1);
       if (!lastSeen[c] || score > lastSeen[c]) lastSeen[c] = score;
     });
-    return Object.entries(lastSeen).filter(function (_ref56) {
-      var _ref57 = _slicedToArray(_ref56, 2),
-        s = _ref57[1];
+    return Object.entries(lastSeen).filter(function (_ref58) {
+      var _ref59 = _slicedToArray(_ref58, 2),
+        s = _ref59[1];
       return s < cutoff;
-    }).map(function (_ref58) {
-      var _ref59 = _slicedToArray(_ref58, 1),
-        name = _ref59[0];
+    }).map(function (_ref60) {
+      var _ref61 = _slicedToArray(_ref60, 1),
+        name = _ref61[0];
       return name;
     }).sort();
   }, [filtered, unbilledMonths]);
@@ -7039,21 +7124,21 @@ function AlertsBanner(_ref55) {
     }
   }, "+", unbilledAlerts.length - 20, " more")))));
 }
-function OverviewTab(_ref60) {
-  var filtered = _ref60.filtered,
-    totalCollected = _ref60.totalCollected,
-    totalTx = _ref60.totalTx,
-    uniqueCustomers = _ref60.uniqueCustomers,
-    uniqueEmployees = _ref60.uniqueEmployees,
-    monthlyTrend = _ref60.monthlyTrend,
-    byPtype = _ref60.byPtype,
-    byRegion = _ref60.byRegion,
-    leaderboard = _ref60.leaderboard,
-    topCustomers = _ref60.topCustomers,
-    retVsNew = _ref60.retVsNew,
-    concentration = _ref60.concentration,
-    t = _ref60.t,
-    allTx = _ref60.allTx;
+function OverviewTab(_ref62) {
+  var filtered = _ref62.filtered,
+    totalCollected = _ref62.totalCollected,
+    totalTx = _ref62.totalTx,
+    uniqueCustomers = _ref62.uniqueCustomers,
+    uniqueEmployees = _ref62.uniqueEmployees,
+    monthlyTrend = _ref62.monthlyTrend,
+    byPtype = _ref62.byPtype,
+    byRegion = _ref62.byRegion,
+    leaderboard = _ref62.leaderboard,
+    topCustomers = _ref62.topCustomers,
+    retVsNew = _ref62.retVsNew,
+    concentration = _ref62.concentration,
+    t = _ref62.t,
+    allTx = _ref62.allTx;
   var maxC = topCustomers[0] && topCustomers[0].value || 1;
   var maxE = leaderboard.execs[0] && leaderboard.execs[0].amount || 1;
   var tt = {
@@ -7129,10 +7214,10 @@ function OverviewTab(_ref60) {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref61) {
-      var _ref62 = _slicedToArray(_ref61, 2),
-        n = _ref62[0],
-        v = _ref62[1];
+    }).map(function (_ref63) {
+      var _ref64 = _slicedToArray(_ref63, 2),
+        n = _ref64[0],
+        v = _ref64[1];
       return {
         name: n,
         value: v
@@ -7425,12 +7510,12 @@ function OverviewTab(_ref60) {
 
 /* ── Analysis Tab ── */
 /* ── Standings Card (Analysis Tab) ── */
-function StandingsCard(_ref63) {
-  var filtered = _ref63.filtered,
-    targets = _ref63.targets,
-    filters = _ref63.filters,
-    sheets = _ref63.sheets,
-    t = _ref63.t;
+function StandingsCard(_ref65) {
+  var filtered = _ref65.filtered,
+    targets = _ref65.targets,
+    filters = _ref65.filters,
+    sheets = _ref65.sheets,
+    t = _ref65.t;
   var _useState123 = useState('employee'),
     _useState124 = _slicedToArray(_useState123, 2),
     view = _useState124[0],
@@ -7609,10 +7694,10 @@ function StandingsCard(_ref63) {
       gap: 6,
       marginBottom: 14
     }
-  }, VIEWS.map(function (_ref64) {
-    var _ref65 = _slicedToArray(_ref64, 2),
-      v = _ref65[0],
-      l = _ref65[1];
+  }, VIEWS.map(function (_ref66) {
+    var _ref67 = _slicedToArray(_ref66, 2),
+      v = _ref67[0],
+      l = _ref67[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -7749,18 +7834,18 @@ function StandingsCard(_ref63) {
     }, "AED ", fmt(row.target)))));
   })));
 }
-function AnalysisTab(_ref66) {
-  var filtered = _ref66.filtered,
-    yoyData = _ref66.yoyData,
-    yoyYears = _ref66.yoyYears,
-    heatmapData = _ref66.heatmapData,
-    getHeatColor = _ref66.getHeatColor,
-    slippage = _ref66.slippage,
-    t = _ref66.t,
-    dark = _ref66.dark,
-    targets = _ref66.targets,
-    filters = _ref66.filters,
-    sheets = _ref66.sheets;
+function AnalysisTab(_ref68) {
+  var filtered = _ref68.filtered,
+    yoyData = _ref68.yoyData,
+    yoyYears = _ref68.yoyYears,
+    heatmapData = _ref68.heatmapData,
+    getHeatColor = _ref68.getHeatColor,
+    slippage = _ref68.slippage,
+    t = _ref68.t,
+    dark = _ref68.dark,
+    targets = _ref68.targets,
+    filters = _ref68.filters,
+    sheets = _ref68.sheets;
   var YCOL = ['#3b82f6', '#f43f5e', '#f59e0b', '#10b981', '#8b5cf6'];
   var tt = {
     background: t.card,
@@ -7862,14 +7947,14 @@ function AnalysisTab(_ref66) {
       if (c) totalSpend[c] = (totalSpend[c] || 0) + r._amount;
     });
     var cutoffScore = cy * 100 + cm;
-    return Object.entries(lastSeen).filter(function (_ref67) {
-      var _ref68 = _slicedToArray(_ref67, 2),
-        v = _ref68[1];
-      return v.score < cutoffScore;
-    }).map(function (_ref69) {
+    return Object.entries(lastSeen).filter(function (_ref69) {
       var _ref70 = _slicedToArray(_ref69, 2),
-        name = _ref70[0],
         v = _ref70[1];
+      return v.score < cutoffScore;
+    }).map(function (_ref71) {
+      var _ref72 = _slicedToArray(_ref71, 2),
+        name = _ref72[0],
+        v = _ref72[1];
       return {
         name: name,
         lastYear: v.year,
@@ -8321,12 +8406,12 @@ function AnalysisTab(_ref66) {
 }
 
 /* ── Reverse Calculator Tab ── */
-function ReverseCalcTab(_ref71) {
-  var allTx = _ref71.allTx,
-    targets = _ref71.targets,
-    sheets = _ref71.sheets,
-    t = _ref71.t,
-    dark = _ref71.dark;
+function ReverseCalcTab(_ref73) {
+  var allTx = _ref73.allTx,
+    targets = _ref73.targets,
+    sheets = _ref73.sheets,
+    t = _ref73.t,
+    dark = _ref73.dark;
   var curYear = new Date().getFullYear();
   var availYears = useMemo(function () {
     return _toConsumableArray(new Set(allTx.map(function (r) {
@@ -8913,10 +8998,10 @@ function ReverseCalcTab(_ref71) {
 
 /* ── Main App ── */
 /* ── Data Quality Banner ── */
-function DataQualityBanner(_ref72) {
-  var unmapped = _ref72.unmapped,
-    sheets = _ref72.sheets,
-    t = _ref72.t;
+function DataQualityBanner(_ref74) {
+  var unmapped = _ref74.unmapped,
+    sheets = _ref74.sheets,
+    t = _ref74.t;
   var _useState141 = useState(false),
     _useState142 = _slicedToArray(_useState141, 2),
     open = _useState142[0],
@@ -9033,10 +9118,10 @@ function DataQualityBanner(_ref72) {
     }
   }, "\uD83D\uDCC4 Contracts no CAM: ", s5NoOwner))));
 }
-function ContractsView(_ref73) {
-  var detail = _ref73.detail,
-    moName = _ref73.moName,
-    t = _ref73.t;
+function ContractsView(_ref75) {
+  var detail = _ref75.detail,
+    moName = _ref75.moName,
+    t = _ref75.t;
   var _useState143 = useState(''),
     _useState144 = _slicedToArray(_useState143, 2),
     filterMonth = _useState144[0],
@@ -9339,10 +9424,10 @@ function ContractsView(_ref73) {
 }
 
 /* ── Due Soon Card ── */
-function DueSoonCard(_ref74) {
-  var s5 = _ref74.s5,
-    selPerson = _ref74.selPerson,
-    t = _ref74.t;
+function DueSoonCard(_ref76) {
+  var s5 = _ref76.s5,
+    selPerson = _ref76.selPerson,
+    t = _ref76.t;
   var _useState149 = useState(60),
     _useState150 = _slicedToArray(_useState149, 2),
     win = _useState150[0],
@@ -9466,11 +9551,11 @@ function DueSoonCard(_ref74) {
     }, "~", r.daysDiff, "d")));
   })));
 }
-function SupportPlanningTab(_ref75) {
-  var sheets = _ref75.sheets,
-    targets = _ref75.targets,
-    saveTargets = _ref75.saveTargets,
-    t = _ref75.t;
+function SupportPlanningTab(_ref77) {
+  var sheets = _ref77.sheets,
+    targets = _ref77.targets,
+    saveTargets = _ref77.saveTargets,
+    t = _ref77.t;
   var curYear = new Date().getFullYear();
   var _useState151 = useState(curYear),
     _useState152 = _slicedToArray(_useState151, 2),
@@ -9555,12 +9640,20 @@ function SupportPlanningTab(_ref75) {
       var contractYear = isNextYearJanEarly ? selYear : expiryYear;
       var effectiveMonth = isNextYearJanEarly ? 13 : expiryMonth; // 13 = treat as Q4 of current year
       var quarter = isNextYearJanEarly ? 'Q4' : expiryMonth <= 3 ? 'Q1' : expiryMonth <= 6 ? 'Q2' : expiryMonth <= 9 ? 'Q3' : 'Q4';
+      // ── Renewal-period grouping (per business "Year Period" + "Month" columns) ──
+      // Used for renewal TARGETS so they match the Commission tab; Due Soon still uses expiry above.
+      var periodYear = parseInt((r['Year Period'] || '').toString().replace(/,/g, '') || 0) || expiryYear;
+      var periodMonth = parseInt(r.Month || 0) || expiryMonth;
+      var periodQuarter = periodMonth <= 3 ? 'Q1' : periodMonth <= 6 ? 'Q2' : periodMonth <= 9 ? 'Q3' : 'Q4';
       return {
         owner: owner,
         month: expiryMonth,
         effectiveMonth: effectiveMonth,
         contractYear: contractYear,
         quarter: quarter,
+        periodYear: periodYear,
+        periodMonth: periodMonth,
+        periodQuarter: periodQuarter,
         isNextYearJanEarly: isNextYearJanEarly,
         branch: (r.Branch || '').trim(),
         parentBranch: (r['Parent Branch'] || r['Parent branch'] || '').trim(),
@@ -9617,9 +9710,9 @@ function SupportPlanningTab(_ref75) {
       if (br && amt) teamRenewalTgt[br] = (teamRenewalTgt[br] || 0) + amt;
     });
     return s5Owners.map(function (owner) {
-      // Only contracts for this year (including Jan 1-10 next year rule)
+      // Renewal targets group by "Year Period" + "Month" (matches Commission tab targets)
       var my = s5.filter(function (r) {
-        return r.owner.toLowerCase() === owner.toLowerCase() && r.contractYear === selYear;
+        return r.owner.toLowerCase() === owner.toLowerCase() && r.periodYear === selYear;
       });
       var totalRenewals = my.reduce(function (s, r) {
         return s + r.entitledAmount;
@@ -9634,7 +9727,7 @@ function SupportPlanningTab(_ref75) {
         Q4: 0
       };
       my.forEach(function (r) {
-        if (r.quarter) qRenewals[r.quarter] = (qRenewals[r.quarter] || 0) + r.entitledAmount;
+        if (r.periodQuarter) qRenewals[r.periodQuarter] = (qRenewals[r.periodQuarter] || 0) + r.entitledAmount;
       });
       var ownerData = collectedByOwner[owner.toLowerCase()] || {
         renewals: 0,
@@ -9679,37 +9772,9 @@ function SupportPlanningTab(_ref75) {
     });
   }, [s5Owners, s5, collectedByOwner, selYear, targets, sheets.s4, sheets.s5]);
 
-  // Auto-save quarterly renewal targets — guarded by ref to fire only when s5/year actually changes
-  var qSaveKey = useRef('');
-  useEffect(function () {
-    if (!s5Owners.length || !saveTargets) return;
-    var key = selYear + '|' + s5.length;
-    if (qSaveKey.current === key) return; // already saved for this data+year combo
-    qSaveKey.current = key;
-    var updates = {};
-    s5Owners.forEach(function (owner) {
-      var my = s5.filter(function (r) {
-        return r.owner.toLowerCase() === owner.toLowerCase() && r.contractYear === selYear;
-      });
-      var qR = {
-        Q1: 0,
-        Q2: 0,
-        Q3: 0,
-        Q4: 0
-      };
-      my.forEach(function (r) {
-        if (r.quarter) qR[r.quarter] += r.entitledAmount;
-      });
-      ['Q1', 'Q2', 'Q3', 'Q4'].forEach(function (q) {
-        updates['renewals_q_' + owner + '_' + selYear + '_' + q] = Math.round(qR[q] || 0);
-      });
-    });
-    dbGet('targets').then(function (current) {
-      saveTargets(Object.assign({}, current || {}, updates));
-    })["catch"](function () {
-      return saveTargets(updates);
-    });
-  });
+  // (Renewal quarterly targets are now derived centrally in App via deriveTargetsFromSheets
+  //  and always available app-wide. The old per-tab auto-save to IndexedDB is disabled to
+  //  avoid persisting stale values that would shadow the live sheet-derived ones.)
 
   // Branch Cash Flow: All CAMs = full contract value; specific CAM = their ownership share
   var branchCashFlow = useMemo(function () {
@@ -9915,10 +9980,10 @@ function SupportPlanningTab(_ref75) {
       borderRadius: 8,
       overflow: 'hidden'
     }
-  }, [['summary', 'Summary'], ['schedule', 'Monthly Schedule'], ['contracts', 'Contracts'], ['cashflow', 'Branch Cash Flow']].map(function (_ref76) {
-    var _ref77 = _slicedToArray(_ref76, 2),
-      v = _ref77[0],
-      l = _ref77[1];
+  }, [['summary', 'Summary'], ['schedule', 'Monthly Schedule'], ['contracts', 'Contracts'], ['cashflow', 'Branch Cash Flow']].map(function (_ref78) {
+    var _ref79 = _slicedToArray(_ref78, 2),
+      v = _ref79[0],
+      l = _ref79[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -10416,12 +10481,13 @@ function SupportPlanningTab(_ref75) {
 }
 
 /* ── Notification Bell (combines Alerts + Data Quality into a top-bar dropdown) ── */
-function NotificationBell(_ref78) {
-  var filtered = _ref78.filtered,
-    sheets = _ref78.sheets,
-    targets = _ref78.targets,
-    unmapped = _ref78.unmapped,
-    t = _ref78.t;
+function NotificationBell(_ref80) {
+  var filtered = _ref80.filtered,
+    sheets = _ref80.sheets,
+    targets = _ref80.targets,
+    unmapped = _ref80.unmapped,
+    nameMismatches = _ref80.nameMismatches,
+    t = _ref80.t;
   var _useState157 = useState(false),
     _useState158 = _slicedToArray(_useState157, 2),
     open = _useState158[0],
@@ -10488,7 +10554,8 @@ function NotificationBell(_ref78) {
       return !(r.User || r.CSOwner || '').trim();
     }).length;
   }, [sheets.s5]);
-  var dqIssues = [unmapped.length > 0, noStream > 0, noBranch > 0, pipeNoAmt > 0, s5NoOwner > 0].filter(Boolean).length;
+  var mismatches = nameMismatches || [];
+  var dqIssues = [unmapped.length > 0, noStream > 0, noBranch > 0, pipeNoAmt > 0, s5NoOwner > 0, mismatches.length > 0].filter(Boolean).length;
   var alertCount = attAlerts.length;
   var totalCount = alertCount + dqIssues;
   return /*#__PURE__*/React.createElement("div", {
@@ -10725,7 +10792,17 @@ function NotificationBell(_ref78) {
       padding: '2px 8px',
       color: '#713f12'
     }
-  }, "\uD83D\uDCC4 Contracts no CAM: ", s5NoOwner))))));
+  }, "\uD83D\uDCC4 Contracts no CAM: ", s5NoOwner), mismatches.length > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      background: '#fee2e2',
+      border: '1px solid #fca5a5',
+      borderRadius: 5,
+      padding: '2px 8px',
+      color: '#991b1b'
+    },
+    title: 'These Sheet 5 owner names have no matching Sheet 4 employee — their renewals will not attach until names match: ' + mismatches.join(', ')
+  }, "\uD83D\uDD17 Renewal owner not in Sheet 4: ", mismatches.slice(0, 3).join(', '), mismatches.length > 3 ? " +".concat(mismatches.length - 3, " more") : ''))))));
 }
 ReactDOM.createRoot(document.getElementById('root')).render( /*#__PURE__*/React.createElement(App, null));
 function App() {
@@ -10852,7 +10929,7 @@ function App() {
     gsheetStatus = _useState192[0],
     setGsheetStatus = _useState192[1];
   var fetchSheetFromUrl = useCallback( /*#__PURE__*/function () {
-    var _ref79 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9(k, url) {
+    var _ref81 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9(k, url) {
       var res, text;
       return _regeneratorRuntime().wrap(function _callee9$(_context9) {
         while (1) switch (_context9.prev = _context9.next) {
@@ -10891,11 +10968,11 @@ function App() {
       }, _callee9);
     }));
     return function (_x6, _x7) {
-      return _ref79.apply(this, arguments);
+      return _ref81.apply(this, arguments);
     };
   }(), []);
   var refreshFromGSheets = useCallback( /*#__PURE__*/function () {
-    var _ref80 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10(urls) {
+    var _ref82 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10(urls) {
       var silent,
         keys,
         active,
@@ -11005,7 +11082,7 @@ function App() {
       }, _callee10, null, [[19, 24]]);
     }));
     return function (_x8) {
-      return _ref80.apply(this, arguments);
+      return _ref82.apply(this, arguments);
     };
   }(), [fetchSheetFromUrl]);
   useEffect(function () {
@@ -11094,7 +11171,7 @@ function App() {
     }));
   }
   var saveTargets = useCallback( /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12(tg) {
+    var _ref83 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12(tg) {
       return _regeneratorRuntime().wrap(function _callee12$(_context12) {
         while (1) switch (_context12.prev = _context12.next) {
           case 0:
@@ -11115,14 +11192,14 @@ function App() {
       }, _callee12, null, [[1, 6]]);
     }));
     return function (_x9) {
-      return _ref81.apply(this, arguments);
+      return _ref83.apply(this, arguments);
     };
   }(), []);
   var onFileUpload = useCallback(function (k, file) {
     if (!file) return;
     var reader = new FileReader();
     reader.onload = /*#__PURE__*/function () {
-      var _ref82 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13(e) {
+      var _ref84 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13(e) {
         var data, ts;
         return _regeneratorRuntime().wrap(function _callee13$(_context13) {
           while (1) switch (_context13.prev = _context13.next) {
@@ -11156,13 +11233,13 @@ function App() {
         }, _callee13, null, [[4, 9]]);
       }));
       return function (_x10) {
-        return _ref82.apply(this, arguments);
+        return _ref84.apply(this, arguments);
       };
     }();
     reader.readAsText(file);
   }, []);
   var onClearSheet = useCallback( /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(k) {
+    var _ref85 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(k) {
       return _regeneratorRuntime().wrap(function _callee14$(_context14) {
         while (1) switch (_context14.prev = _context14.next) {
           case 0:
@@ -11192,7 +11269,7 @@ function App() {
       }, _callee14, null, [[2, 7]]);
     }));
     return function (_x11) {
-      return _ref83.apply(this, arguments);
+      return _ref85.apply(this, arguments);
     };
   }(), []);
   var allTx = useMemo(function () {
@@ -11203,6 +11280,18 @@ function App() {
       });
     });
   }, [sheets]);
+  // Sheet-derived targets (Sheet 4 individual/team/branch + salaries, Sheet 5 renewals).
+  // These are the live source of truth: derived values WIN over any saved/manual values,
+  // so every refresh re-fills from the sheets and all users stay in sync (no per-PC drift).
+  var derivedTargets = useMemo(function () {
+    return deriveTargetsFromSheets(sheets.s4, sheets.s5);
+  }, [sheets.s4, sheets.s5]);
+  var mergedTargets = useMemo(function () {
+    return _objectSpread(_objectSpread({}, targets), derivedTargets);
+  }, [derivedTargets, targets]);
+  var nameMismatches = useMemo(function () {
+    return renewalNameMismatches(sheets.s4, sheets.s5);
+  }, [sheets.s4, sheets.s5]);
   var filtered = useMemo(function () {
     return allTx.filter(function (r) {
       if (filters.pdcStatus !== 'Both' && r.PDCStatus !== filters.pdcStatus) return false;
@@ -11318,10 +11407,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref84) {
-      var _ref85 = _slicedToArray(_ref84, 2),
-        n = _ref85[0],
-        v = _ref85[1];
+    }).map(function (_ref86) {
+      var _ref87 = _slicedToArray(_ref86, 2),
+        n = _ref87[0],
+        v = _ref87[1];
       return {
         name: n,
         value: v
@@ -11335,10 +11424,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref86) {
-      var _ref87 = _slicedToArray(_ref86, 2),
-        n = _ref87[0],
-        v = _ref87[1];
+    }).map(function (_ref88) {
+      var _ref89 = _slicedToArray(_ref88, 2),
+        n = _ref89[0],
+        v = _ref89[1];
       return {
         name: n,
         value: v
@@ -11352,10 +11441,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).slice(0, 10).map(function (_ref88) {
-      var _ref89 = _slicedToArray(_ref88, 2),
-        n = _ref89[0],
-        v = _ref89[1];
+    }).slice(0, 10).map(function (_ref90) {
+      var _ref91 = _slicedToArray(_ref90, 2),
+        n = _ref91[0],
+        v = _ref91[1];
       return {
         name: n,
         value: v
@@ -11629,10 +11718,10 @@ function App() {
       flex: 1,
       overflowX: 'auto'
     }
-  }, TABS.map(function (_ref90) {
-    var _ref91 = _slicedToArray(_ref90, 2),
-      k = _ref91[0],
-      l = _ref91[1];
+  }, TABS.map(function (_ref92) {
+    var _ref93 = _slicedToArray(_ref92, 2),
+      k = _ref93[0],
+      l = _ref93[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -11723,8 +11812,9 @@ function App() {
   }, "\uD83D\uDD04"), /*#__PURE__*/React.createElement(NotificationBell, {
     filtered: filtered,
     sheets: sheets,
-    targets: targets,
+    targets: mergedTargets,
     unmapped: unmapped,
+    nameMismatches: nameMismatches,
     t: t
   }), /*#__PURE__*/React.createElement(Btn, {
     t: t,
@@ -11794,7 +11884,7 @@ function App() {
     },
     credit: credit,
     onSaveCredit: /*#__PURE__*/function () {
-      var _ref92 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15(c) {
+      var _ref94 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15(c) {
         return _regeneratorRuntime().wrap(function _callee15$(_context15) {
           while (1) switch (_context15.prev = _context15.next) {
             case 0:
@@ -11808,7 +11898,7 @@ function App() {
         }, _callee15);
       }));
       return function (_x12) {
-        return _ref92.apply(this, arguments);
+        return _ref94.apply(this, arguments);
       };
     }()
   })), tab === 'targets' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
@@ -11819,7 +11909,7 @@ function App() {
     }
   }) : /*#__PURE__*/React.createElement(TargetsTab, {
     sheets: sheets,
-    targets: targets,
+    targets: mergedTargets,
     saveTargets: saveTargets,
     t: t
   })), tab === 'commission' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
@@ -11830,18 +11920,18 @@ function App() {
     }
   }) : /*#__PURE__*/React.createElement(CommissionTab, {
     sheets: sheets,
-    targets: targets,
+    targets: mergedTargets,
     t: t,
     dark: dark
   })), tab === 'reverse' && /*#__PURE__*/React.createElement(ReverseCalcTab, {
     allTx: allTx,
-    targets: targets,
+    targets: mergedTargets,
     sheets: sheets,
     t: t,
     dark: dark
   }), tab === 'support' && /*#__PURE__*/React.createElement(SupportPlanningTab, {
     sheets: sheets,
-    targets: targets,
+    targets: mergedTargets,
     saveTargets: saveTargets,
     t: t
   }), tab === 'pipeline' && /*#__PURE__*/React.createElement(PipelineTab, {
@@ -11851,7 +11941,7 @@ function App() {
     dark: dark
   }), tab === 'performance' && /*#__PURE__*/React.createElement(PerformanceTab, {
     allTx: allTx,
-    targets: targets,
+    targets: mergedTargets,
     sheets: sheets,
     t: t
   }), (tab === 'overview' || tab === 'analysis') && !hasData && /*#__PURE__*/React.createElement("div", {
@@ -12119,7 +12209,7 @@ function App() {
     slippage: slippage,
     t: t,
     dark: dark,
-    targets: targets,
+    targets: mergedTargets,
     filters: filters,
     sheets: sheets
   })))));
