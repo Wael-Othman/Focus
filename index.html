@@ -937,34 +937,7 @@ function dbSet(_x, _x2) {
   return _dbSet.apply(this, arguments);
 }
 function _dbSet() {
-  _dbSet = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee16(k, v) {
-    var db;
-    return _regeneratorRuntime().wrap(function _callee16$(_context16) {
-      while (1) switch (_context16.prev = _context16.next) {
-        case 0:
-          _context16.next = 2;
-          return openDB();
-        case 2:
-          db = _context16.sent;
-          return _context16.abrupt("return", new Promise(function (res, rej) {
-            var tx = db.transaction('kv', 'readwrite');
-            tx.objectStore('kv').put(v, k);
-            tx.oncomplete = res;
-            tx.onerror = rej;
-          }));
-        case 4:
-        case "end":
-          return _context16.stop();
-      }
-    }, _callee16);
-  }));
-  return _dbSet.apply(this, arguments);
-}
-function dbGet(_x3) {
-  return _dbGet.apply(this, arguments);
-}
-function _dbGet() {
-  _dbGet = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee17(k) {
+  _dbSet = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee17(k, v) {
     var db;
     return _regeneratorRuntime().wrap(function _callee17$(_context17) {
       while (1) switch (_context17.prev = _context17.next) {
@@ -974,11 +947,10 @@ function _dbGet() {
         case 2:
           db = _context17.sent;
           return _context17.abrupt("return", new Promise(function (res, rej) {
-            var r = db.transaction('kv', 'readonly').objectStore('kv').get(k);
-            r.onsuccess = function (e) {
-              return res(e.target.result);
-            };
-            r.onerror = rej;
+            var tx = db.transaction('kv', 'readwrite');
+            tx.objectStore('kv').put(v, k);
+            tx.oncomplete = res;
+            tx.onerror = rej;
           }));
         case 4:
         case "end":
@@ -986,14 +958,13 @@ function _dbGet() {
       }
     }, _callee17);
   }));
+  return _dbSet.apply(this, arguments);
+}
+function dbGet(_x3) {
   return _dbGet.apply(this, arguments);
 }
-function dbDel(_x4) {
-  return _dbDel.apply(this, arguments);
-}
-/* ── Simple hash for password ── */
-function _dbDel() {
-  _dbDel = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee18(k) {
+function _dbGet() {
+  _dbGet = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee18(k) {
     var db;
     return _regeneratorRuntime().wrap(function _callee18$(_context18) {
       while (1) switch (_context18.prev = _context18.next) {
@@ -1003,6 +974,35 @@ function _dbDel() {
         case 2:
           db = _context18.sent;
           return _context18.abrupt("return", new Promise(function (res, rej) {
+            var r = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+            r.onsuccess = function (e) {
+              return res(e.target.result);
+            };
+            r.onerror = rej;
+          }));
+        case 4:
+        case "end":
+          return _context18.stop();
+      }
+    }, _callee18);
+  }));
+  return _dbGet.apply(this, arguments);
+}
+function dbDel(_x4) {
+  return _dbDel.apply(this, arguments);
+}
+/* ── Simple hash for password ── */
+function _dbDel() {
+  _dbDel = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee19(k) {
+    var db;
+    return _regeneratorRuntime().wrap(function _callee19$(_context19) {
+      while (1) switch (_context19.prev = _context19.next) {
+        case 0:
+          _context19.next = 2;
+          return openDB();
+        case 2:
+          db = _context19.sent;
+          return _context19.abrupt("return", new Promise(function (res, rej) {
             var tx = db.transaction('kv', 'readwrite');
             tx.objectStore('kv')["delete"](k);
             tx.oncomplete = res;
@@ -1010,9 +1010,9 @@ function _dbDel() {
           }));
         case 4:
         case "end":
-          return _context18.stop();
+          return _context19.stop();
       }
-    }, _callee18);
+    }, _callee19);
   }));
   return _dbDel.apply(this, arguments);
 }
@@ -1021,23 +1021,23 @@ function hashPwd(_x5) {
 }
 /* ── CSV ── */
 function _hashPwd() {
-  _hashPwd = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee19(pwd) {
+  _hashPwd = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee20(pwd) {
     var buf;
-    return _regeneratorRuntime().wrap(function _callee19$(_context19) {
-      while (1) switch (_context19.prev = _context19.next) {
+    return _regeneratorRuntime().wrap(function _callee20$(_context20) {
+      while (1) switch (_context20.prev = _context20.next) {
         case 0:
-          _context19.next = 2;
+          _context20.next = 2;
           return crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd));
         case 2:
-          buf = _context19.sent;
-          return _context19.abrupt("return", Array.from(new Uint8Array(buf)).map(function (b) {
+          buf = _context20.sent;
+          return _context20.abrupt("return", Array.from(new Uint8Array(buf)).map(function (b) {
             return b.toString(16).padStart(2, '0');
           }).join(''));
         case 4:
         case "end":
-          return _context19.stop();
+          return _context20.stop();
       }
-    }, _callee19);
+    }, _callee20);
   }));
   return _hashPwd.apply(this, arguments);
 }
@@ -1147,6 +1147,13 @@ var DEFAULT_CREDIT = {
   email: 'Wael@focussoftnet.ae'
 };
 var CREDIT_PWD_HASH = '72d1b5da6eeaf1789df86487da50ad5e9dadb5ffaecb56b6de592aa286c9c1b8';
+/* ──────────────────────────────────────────────────────────────────────────
+   PASSWORD PROTECTION TOGGLE
+   Set to true to require the password for Settings / Security / Targets / Commission.
+   Set to false to open all tabs with no password.
+   Change this one value, then rebuild/re-upload. (Currently OFF.)
+   ────────────────────────────────────────────────────────────────────────── */
+var ENABLE_TAB_PASSWORD = false;
 
 /* ── Hardcoded master password hash ── */
 var MASTER_PWD_HASH = '72d1b5da6eeaf1789df86487da50ad5e9dadb5ffaecb56b6de592aa286c9c1b8';
@@ -2075,13 +2082,15 @@ function SecurityTab(_ref25) {
   var t = _ref25.t,
     onLock = _ref25.onLock,
     credit = _ref25.credit,
-    onSaveCredit = _ref25.onSaveCredit;
+    onSaveCredit = _ref25.onSaveCredit,
+    pwdEnabled = _ref25.pwdEnabled,
+    setPasswordProtection = _ref25.setPasswordProtection;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       maxWidth: 460
     }
   }, /*#__PURE__*/React.createElement(Card, {
-    title: "Session",
+    title: "Password Protection",
     t: t
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2090,7 +2099,28 @@ function SecurityTab(_ref25) {
       marginBottom: 16,
       lineHeight: 1.6
     }
-  }, "This dashboard is password protected. Lock your session when stepping away."), /*#__PURE__*/React.createElement(Btn, {
+  }, "Require a password to open Settings, Targets, Commission, and Security. This setting is saved in ", /*#__PURE__*/React.createElement("strong", null, "this browser only"), " \u2014 it does not affect other users of the published dashboard. Currently: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: pwdEnabled ? t.success : t.danger
+    }
+  }, pwdEnabled ? 'ON' : 'OFF'), "."), /*#__PURE__*/React.createElement(PasswordToggle, {
+    t: t,
+    pwdEnabled: pwdEnabled,
+    setPasswordProtection: setPasswordProtection
+  })), pwdEnabled && /*#__PURE__*/React.createElement(Card, {
+    title: "Session",
+    t: t,
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: t.muted,
+      marginBottom: 16,
+      lineHeight: 1.6
+    }
+  }, "Lock your session when stepping away."), /*#__PURE__*/React.createElement(Btn, {
     t: t,
     onClick: onLock,
     style: {
@@ -2116,30 +2146,30 @@ function SecurityTab(_ref25) {
     onSave: onSaveCredit
   })));
 }
-function CreditEditor(_ref26) {
+function PasswordToggle(_ref26) {
   var t = _ref26.t,
-    credit = _ref26.credit,
-    onSave = _ref26.onSave;
+    pwdEnabled = _ref26.pwdEnabled,
+    setPasswordProtection = _ref26.setPasswordProtection;
   var _useState19 = useState(''),
     _useState20 = _slicedToArray(_useState19, 2),
-    cpwd = _useState20[0],
-    setCpwd = _useState20[1];
-  var _useState21 = useState(credit && credit.name || DEFAULT_CREDIT.name),
+    pwd = _useState20[0],
+    setPwd = _useState20[1];
+  var _useState21 = useState(''),
     _useState22 = _slicedToArray(_useState21, 2),
-    cname = _useState22[0],
-    setCname = _useState22[1];
-  var _useState23 = useState(credit && credit.email || DEFAULT_CREDIT.email),
+    msg = _useState22[0],
+    setMsg = _useState22[1];
+  var _useState23 = useState(false),
     _useState24 = _slicedToArray(_useState23, 2),
-    cemail = _useState24[0],
-    setCemail = _useState24[1];
-  var _useState25 = useState(''),
-    _useState26 = _slicedToArray(_useState25, 2),
-    cmsg = _useState26[0],
-    setCmsg = _useState26[1];
-  var _useState27 = useState(false),
-    _useState28 = _slicedToArray(_useState27, 2),
-    unlocked = _useState28[0],
-    setUnlocked = _useState28[1];
+    verified = _useState24[0],
+    setVerified = _useState24[1];
+  var ii = {
+    background: t.surface,
+    border: "1px solid ".concat(t.border),
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 13,
+    color: t.text
+  };
   var verify = /*#__PURE__*/function () {
     var _ref27 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee4() {
       var h;
@@ -2147,16 +2177,16 @@ function CreditEditor(_ref26) {
         while (1) switch (_context4.prev = _context4.next) {
           case 0:
             _context4.next = 2;
-            return hashPwd(cpwd);
+            return hashPwd(pwd);
           case 2:
             h = _context4.sent;
             if (h === CREDIT_PWD_HASH) {
-              setUnlocked(true);
-              setCmsg('');
+              setVerified(true);
+              setMsg('');
             } else {
-              setCmsg('Incorrect password');
+              setMsg('Incorrect password');
             }
-            setCpwd('');
+            setPwd('');
           case 5:
           case "end":
             return _context4.stop();
@@ -2167,12 +2197,129 @@ function CreditEditor(_ref26) {
       return _ref27.apply(this, arguments);
     };
   }();
-  var save = /*#__PURE__*/function () {
-    var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
+  if (!verified) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: pwd,
+    onChange: function onChange(e) {
+      setPwd(e.target.value);
+      setMsg('');
+    },
+    placeholder: "Enter password to change",
+    style: _objectSpread(_objectSpread({}, ii), {}, {
+      width: 260
+    })
+  }), /*#__PURE__*/React.createElement(Btn, {
+    t: t,
+    primary: true,
+    onClick: verify
+  }, "Unlock"), msg && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: t.danger
+    }
+  }, msg));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    t: t,
+    primary: !pwdEnabled,
+    onClick: function onClick() {
+      return setPasswordProtection(true);
+    },
+    disabled: pwdEnabled,
+    style: {
+      fontSize: 13,
+      padding: '8px 16px',
+      opacity: pwdEnabled ? 0.5 : 1
+    }
+  }, "Turn ON"), /*#__PURE__*/React.createElement(Btn, {
+    t: t,
+    primary: pwdEnabled,
+    onClick: function onClick() {
+      return setPasswordProtection(false);
+    },
+    disabled: !pwdEnabled,
+    style: {
+      fontSize: 13,
+      padding: '8px 16px',
+      opacity: !pwdEnabled ? 0.5 : 1
+    }
+  }, "Turn OFF"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: t.muted
+    }
+  }, pwdEnabled ? 'Takes full effect on next page load.' : 'Protection is off.'));
+}
+function CreditEditor(_ref28) {
+  var t = _ref28.t,
+    credit = _ref28.credit,
+    onSave = _ref28.onSave;
+  var _useState25 = useState(''),
+    _useState26 = _slicedToArray(_useState25, 2),
+    cpwd = _useState26[0],
+    setCpwd = _useState26[1];
+  var _useState27 = useState(credit && credit.name || DEFAULT_CREDIT.name),
+    _useState28 = _slicedToArray(_useState27, 2),
+    cname = _useState28[0],
+    setCname = _useState28[1];
+  var _useState29 = useState(credit && credit.email || DEFAULT_CREDIT.email),
+    _useState30 = _slicedToArray(_useState29, 2),
+    cemail = _useState30[0],
+    setCemail = _useState30[1];
+  var _useState31 = useState(''),
+    _useState32 = _slicedToArray(_useState31, 2),
+    cmsg = _useState32[0],
+    setCmsg = _useState32[1];
+  var _useState33 = useState(false),
+    _useState34 = _slicedToArray(_useState33, 2),
+    unlocked = _useState34[0],
+    setUnlocked = _useState34[1];
+  var verify = /*#__PURE__*/function () {
+    var _ref29 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
+      var h;
       return _regeneratorRuntime().wrap(function _callee5$(_context5) {
         while (1) switch (_context5.prev = _context5.next) {
           case 0:
             _context5.next = 2;
+            return hashPwd(cpwd);
+          case 2:
+            h = _context5.sent;
+            if (h === CREDIT_PWD_HASH) {
+              setUnlocked(true);
+              setCmsg('');
+            } else {
+              setCmsg('Incorrect password');
+            }
+            setCpwd('');
+          case 5:
+          case "end":
+            return _context5.stop();
+        }
+      }, _callee5);
+    }));
+    return function verify() {
+      return _ref29.apply(this, arguments);
+    };
+  }();
+  var save = /*#__PURE__*/function () {
+    var _ref30 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6() {
+      return _regeneratorRuntime().wrap(function _callee6$(_context6) {
+        while (1) switch (_context6.prev = _context6.next) {
+          case 0:
+            _context6.next = 2;
             return onSave({
               name: cname,
               email: cemail
@@ -2184,12 +2331,12 @@ function CreditEditor(_ref26) {
             }, 2000);
           case 4:
           case "end":
-            return _context5.stop();
+            return _context6.stop();
         }
-      }, _callee5);
+      }, _callee6);
     }));
     return function save() {
-      return _ref28.apply(this, arguments);
+      return _ref30.apply(this, arguments);
     };
   }();
   var ii = {
@@ -2293,36 +2440,36 @@ function CreditEditor(_ref26) {
 }
 
 /* ── Settings Tab ── */
-function SettingsTab(_ref29) {
-  var sheets = _ref29.sheets,
-    sheetMeta = _ref29.sheetMeta,
-    onFileUpload = _ref29.onFileUpload,
-    onClearSheet = _ref29.onClearSheet,
-    gsheetUrls = _ref29.gsheetUrls,
-    setGsheetUrls = _ref29.setGsheetUrls,
-    gsheetStatus = _ref29.gsheetStatus,
-    onRefreshGSheets = _ref29.onRefreshGSheets,
-    t = _ref29.t;
-  var _useState29 = useState(null),
-    _useState30 = _slicedToArray(_useState29, 2),
-    drag = _useState30[0],
-    setDrag = _useState30[1];
-  var _useState31 = useState(gsheetUrls),
-    _useState32 = _slicedToArray(_useState31, 2),
-    localUrls = _useState32[0],
-    setLocalUrls = _useState32[1];
-  var _useState33 = useState(false),
-    _useState34 = _slicedToArray(_useState33, 2),
-    saving = _useState34[0],
-    setSaving = _useState34[1];
-  var _useState35 = useState(false),
+function SettingsTab(_ref31) {
+  var sheets = _ref31.sheets,
+    sheetMeta = _ref31.sheetMeta,
+    onFileUpload = _ref31.onFileUpload,
+    onClearSheet = _ref31.onClearSheet,
+    gsheetUrls = _ref31.gsheetUrls,
+    setGsheetUrls = _ref31.setGsheetUrls,
+    gsheetStatus = _ref31.gsheetStatus,
+    onRefreshGSheets = _ref31.onRefreshGSheets,
+    t = _ref31.t;
+  var _useState35 = useState(null),
     _useState36 = _slicedToArray(_useState35, 2),
-    saved = _useState36[0],
-    setSaved = _useState36[1];
-  var _useState37 = useState(false),
+    drag = _useState36[0],
+    setDrag = _useState36[1];
+  var _useState37 = useState(gsheetUrls),
     _useState38 = _slicedToArray(_useState37, 2),
-    showHelp = _useState38[0],
-    setShowHelp = _useState38[1];
+    localUrls = _useState38[0],
+    setLocalUrls = _useState38[1];
+  var _useState39 = useState(false),
+    _useState40 = _slicedToArray(_useState39, 2),
+    saving = _useState40[0],
+    setSaving = _useState40[1];
+  var _useState41 = useState(false),
+    _useState42 = _slicedToArray(_useState41, 2),
+    saved = _useState42[0],
+    setSaved = _useState42[1];
+  var _useState43 = useState(false),
+    _useState44 = _slicedToArray(_useState43, 2),
+    showHelp = _useState44[0],
+    setShowHelp = _useState44[1];
   var SC = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
   var ICONS = ['📋', '💰', '🔭', '👥'];
   var counts = ['s1', 's2', 's3', 's4', 's5'].map(function (k) {
@@ -2342,13 +2489,13 @@ function SettingsTab(_ref29) {
   };
   var urlsChanged = JSON.stringify(localUrls) !== JSON.stringify(gsheetUrls);
   var saveUrls = /*#__PURE__*/function () {
-    var _ref30 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6() {
-      return _regeneratorRuntime().wrap(function _callee6$(_context6) {
-        while (1) switch (_context6.prev = _context6.next) {
+    var _ref32 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7() {
+      return _regeneratorRuntime().wrap(function _callee7$(_context7) {
+        while (1) switch (_context7.prev = _context7.next) {
           case 0:
             setSaving(true);
             setSaved(false);
-            _context6.next = 4;
+            _context7.next = 4;
             return dbSet('gsheet_urls', localUrls);
           case 4:
             setGsheetUrls(localUrls);
@@ -2359,12 +2506,12 @@ function SettingsTab(_ref29) {
             }, 2500);
           case 8:
           case "end":
-            return _context6.stop();
+            return _context7.stop();
         }
-      }, _callee6);
+      }, _callee7);
     }));
     return function saveUrls() {
-      return _ref30.apply(this, arguments);
+      return _ref32.apply(this, arguments);
     };
   }();
   var SHEET_NAMES = ['Sheet 1 (Historical)', 'Sheet 2 (Current Year)', 'Sheet 3 (Pipeline)', 'Sheet 4 (Org)', 'Sheet 5 (Contracts)'];
@@ -2374,39 +2521,39 @@ function SettingsTab(_ref29) {
 
   // ── Download Updated File ─────────────────────────────────────────────────
   var downloadUpdatedFile = /*#__PURE__*/function () {
-    var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7() {
+    var _ref33 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8() {
       var src, res, newBlock, updated, blob, a;
-      return _regeneratorRuntime().wrap(function _callee7$(_context7) {
-        while (1) switch (_context7.prev = _context7.next) {
+      return _regeneratorRuntime().wrap(function _callee8$(_context8) {
+        while (1) switch (_context8.prev = _context8.next) {
           case 0:
             // Read the current source file
             src = '';
-            _context7.prev = 1;
-            _context7.next = 4;
+            _context8.prev = 1;
+            _context8.next = 4;
             return fetch(window.location.href);
           case 4:
-            res = _context7.sent;
-            _context7.next = 7;
+            res = _context8.sent;
+            _context8.next = 7;
             return res.text();
           case 7:
-            src = _context7.sent;
-            _context7.next = 14;
+            src = _context8.sent;
+            _context8.next = 14;
             break;
           case 10:
-            _context7.prev = 10;
-            _context7.t0 = _context7["catch"](1);
+            _context8.prev = 10;
+            _context8.t0 = _context8["catch"](1);
             alert('Could not read the source file. Make sure you are opening index.html via a local server or direct file path.');
-            return _context7.abrupt("return");
+            return _context8.abrupt("return");
           case 14:
             // Replace the DEFAULT_GSHEET_URLS block with updated URLs
             newBlock = "const DEFAULT_GSHEET_URLS = {\n  s1:'".concat(localUrls.s1 || DEFAULT_GSHEET_URLS.s1, "',\n  s2:'").concat(localUrls.s2 || DEFAULT_GSHEET_URLS.s2, "',\n  s3:'").concat(localUrls.s3 || DEFAULT_GSHEET_URLS.s3, "',\n  s4:'").concat(localUrls.s4 || DEFAULT_GSHEET_URLS.s4, "',\n  s5:'").concat(localUrls.s5 || DEFAULT_GSHEET_URLS.s5, "',\n};");
             updated = src.replace(/const DEFAULT_GSHEET_URLS = \{[\s\S]*?\};/, newBlock);
             if (!(updated === src)) {
-              _context7.next = 19;
+              _context8.next = 19;
               break;
             }
             alert('Could not locate the URL block in the source. The file may have been modified.');
-            return _context7.abrupt("return");
+            return _context8.abrupt("return");
           case 19:
             blob = new Blob([updated], {
               type: 'text/html'
@@ -2418,12 +2565,12 @@ function SettingsTab(_ref29) {
             URL.revokeObjectURL(a.href);
           case 25:
           case "end":
-            return _context7.stop();
+            return _context8.stop();
         }
-      }, _callee7, null, [[1, 10]]);
+      }, _callee8, null, [[1, 10]]);
     }));
     return function downloadUpdatedFile() {
-      return _ref31.apply(this, arguments);
+      return _ref33.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -2911,16 +3058,16 @@ function SettingsTab(_ref29) {
     t: t
   }));
 }
-function GoogleSheetsTester(_ref32) {
-  var t = _ref32.t;
-  var _useState39 = useState(''),
-    _useState40 = _slicedToArray(_useState39, 2),
-    url = _useState40[0],
-    setUrl = _useState40[1];
-  var _useState41 = useState(null),
-    _useState42 = _slicedToArray(_useState41, 2),
-    status = _useState42[0],
-    setStatus = _useState42[1];
+function GoogleSheetsTester(_ref34) {
+  var t = _ref34.t;
+  var _useState45 = useState(''),
+    _useState46 = _slicedToArray(_useState45, 2),
+    url = _useState46[0],
+    setUrl = _useState46[1];
+  var _useState47 = useState(null),
+    _useState48 = _slicedToArray(_useState47, 2),
+    status = _useState48[0],
+    setStatus = _useState48[1];
   var PROXIES = [{
     name: 'Direct',
     fn: function fn(u) {
@@ -2943,52 +3090,52 @@ function GoogleSheetsTester(_ref32) {
     }
   }];
   var test = /*#__PURE__*/function () {
-    var _ref33 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8() {
+    var _ref35 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9() {
       var _i, _PROXIES, proxy, fetchUrl, res, text, lines, headers, preview;
-      return _regeneratorRuntime().wrap(function _callee8$(_context8) {
-        while (1) switch (_context8.prev = _context8.next) {
+      return _regeneratorRuntime().wrap(function _callee9$(_context9) {
+        while (1) switch (_context9.prev = _context9.next) {
           case 0:
             if (url.trim()) {
-              _context8.next = 3;
+              _context9.next = 3;
               break;
             }
             setStatus({
               ok: false,
               error: 'Please enter a URL'
             });
-            return _context8.abrupt("return");
+            return _context9.abrupt("return");
           case 3:
             setStatus('loading');
             _i = 0, _PROXIES = PROXIES;
           case 5:
             if (!(_i < _PROXIES.length)) {
-              _context8.next = 32;
+              _context9.next = 32;
               break;
             }
             proxy = _PROXIES[_i];
-            _context8.prev = 7;
+            _context9.prev = 7;
             fetchUrl = proxy.fn(url.trim());
-            _context8.next = 11;
+            _context9.next = 11;
             return fetch(fetchUrl, {
               signal: AbortSignal.timeout(8000)
             });
           case 11:
-            res = _context8.sent;
+            res = _context9.sent;
             if (res.ok) {
-              _context8.next = 14;
+              _context9.next = 14;
               break;
             }
-            return _context8.abrupt("continue", 29);
+            return _context9.abrupt("continue", 29);
           case 14:
-            _context8.next = 16;
+            _context9.next = 16;
             return res.text();
           case 16:
-            text = _context8.sent;
+            text = _context9.sent;
             if (!(!text.trim() || text.trim().startsWith('<'))) {
-              _context8.next = 19;
+              _context9.next = 19;
               break;
             }
-            return _context8.abrupt("continue", 29);
+            return _context9.abrupt("continue", 29);
           case 19:
             lines = text.trim().split(/\r?\n/);
             headers = lines[0].split(',').map(function (h) {
@@ -3005,14 +3152,14 @@ function GoogleSheetsTester(_ref32) {
               headers: headers,
               preview: preview
             });
-            return _context8.abrupt("return");
+            return _context9.abrupt("return");
           case 26:
-            _context8.prev = 26;
-            _context8.t0 = _context8["catch"](7);
-            return _context8.abrupt("continue", 29);
+            _context9.prev = 26;
+            _context9.t0 = _context9["catch"](7);
+            return _context9.abrupt("continue", 29);
           case 29:
             _i++;
-            _context8.next = 5;
+            _context9.next = 5;
             break;
           case 32:
             setStatus({
@@ -3021,12 +3168,12 @@ function GoogleSheetsTester(_ref32) {
             });
           case 33:
           case "end":
-            return _context8.stop();
+            return _context9.stop();
         }
-      }, _callee8, null, [[7, 26]]);
+      }, _callee9, null, [[7, 26]]);
     }));
     return function test() {
-      return _ref33.apply(this, arguments);
+      return _ref35.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3161,23 +3308,23 @@ function GoogleSheetsTester(_ref32) {
 }
 
 /* ── Targets Tab ── */
-function TargetsTab(_ref34) {
-  var sheets = _ref34.sheets,
-    targets = _ref34.targets,
-    saveTargets = _ref34.saveTargets,
-    t = _ref34.t;
-  var _useState43 = useState(new Date().getFullYear()),
-    _useState44 = _slicedToArray(_useState43, 2),
-    year = _useState44[0],
-    setYear = _useState44[1];
-  var _useState45 = useState(targets),
-    _useState46 = _slicedToArray(_useState45, 2),
-    local = _useState46[0],
-    setLocal = _useState46[1];
-  var _useState47 = useState(''),
-    _useState48 = _slicedToArray(_useState47, 2),
-    selBranch = _useState48[0],
-    setSelBranch = _useState48[1];
+function TargetsTab(_ref36) {
+  var sheets = _ref36.sheets,
+    targets = _ref36.targets,
+    saveTargets = _ref36.saveTargets,
+    t = _ref36.t;
+  var _useState49 = useState(new Date().getFullYear()),
+    _useState50 = _slicedToArray(_useState49, 2),
+    year = _useState50[0],
+    setYear = _useState50[1];
+  var _useState51 = useState(targets),
+    _useState52 = _slicedToArray(_useState51, 2),
+    local = _useState52[0],
+    setLocal = _useState52[1];
+  var _useState53 = useState(''),
+    _useState54 = _slicedToArray(_useState53, 2),
+    selBranch = _useState54[0],
+    setSelBranch = _useState54[1];
   useEffect(function () {
     return setLocal(targets);
   }, [targets]);
@@ -3478,9 +3625,9 @@ function TargetsTab(_ref34) {
         return setT(kb, e.target.value);
       },
       style: ii
-    })), QTRS.map(function (_ref35) {
-      var q = _ref35.q,
-        w = _ref35.w;
+    })), QTRS.map(function (_ref37) {
+      var q = _ref37.q,
+        w = _ref37.w;
       return /*#__PURE__*/React.createElement(TD, {
         key: q,
         t: t,
@@ -3558,9 +3705,9 @@ function TargetsTab(_ref34) {
         return setT(k, e.target.value);
       },
       style: ii
-    })), QTRS.map(function (_ref36) {
-      var q = _ref36.q,
-        w = _ref36.w;
+    })), QTRS.map(function (_ref38) {
+      var q = _ref38.q,
+        w = _ref38.w;
       return /*#__PURE__*/React.createElement(TD, {
         key: q,
         t: t,
@@ -3665,8 +3812,8 @@ function TargetsTab(_ref34) {
     }
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement(TH, {
     t: t
-  }, "Executive"), QTRS.map(function (_ref37) {
-    var q = _ref37.q;
+  }, "Executive"), QTRS.map(function (_ref39) {
+    var q = _ref39.q;
     return [/*#__PURE__*/React.createElement(TH, {
       key: q + "r",
       t: t
@@ -3688,8 +3835,8 @@ function TargetsTab(_ref34) {
         whiteSpace: "nowrap",
         fontSize: 12
       }
-    }, name), QTRS.map(function (_ref38) {
-      var q = _ref38.q;
+    }, name), QTRS.map(function (_ref40) {
+      var q = _ref40.q;
       return [/*#__PURE__*/React.createElement(TD, {
         key: q + "r",
         t: t
@@ -3737,11 +3884,11 @@ function TargetsTab(_ref34) {
 }
 
 /* ── Collection Detail Modal ── */
-function CollectionDetailModal(_ref39) {
-  var rows = _ref39.rows,
-    title = _ref39.title,
-    onClose = _ref39.onClose,
-    t = _ref39.t;
+function CollectionDetailModal(_ref41) {
+  var rows = _ref41.rows,
+    title = _ref41.title,
+    onClose = _ref41.onClose,
+    t = _ref41.t;
   useEffect(function () {
     var h = function h(e) {
       if (e.key === 'Escape') onClose();
@@ -3908,22 +4055,22 @@ function CollectionDetailModal(_ref39) {
     }
   }, "AED ", fmt(total)))));
 }
-function CommissionTab(_ref40) {
-  var sheets = _ref40.sheets,
-    targets = _ref40.targets,
-    t = _ref40.t,
-    dark = _ref40.dark;
-  var _useState49 = useState(function () {
+function CommissionTab(_ref42) {
+  var sheets = _ref42.sheets,
+    targets = _ref42.targets,
+    t = _ref42.t,
+    dark = _ref42.dark;
+  var _useState55 = useState(function () {
       try {
         return localStorage.getItem('ciq_comm_sel') || '';
       } catch (_e) {
         return '';
       }
     }),
-    _useState50 = _slicedToArray(_useState49, 2),
-    sel = _useState50[0],
-    setSel = _useState50[1];
-  var _useState51 = useState(function () {
+    _useState56 = _slicedToArray(_useState55, 2),
+    sel = _useState56[0],
+    setSel = _useState56[1];
+  var _useState57 = useState(function () {
       try {
         var v = localStorage.getItem('ciq_comm_year');
         return v ? parseInt(v) : new Date().getFullYear();
@@ -3931,55 +4078,55 @@ function CommissionTab(_ref40) {
         return new Date().getFullYear();
       }
     }),
-    _useState52 = _slicedToArray(_useState51, 2),
-    year = _useState52[0],
-    setYear = _useState52[1];
-  var _useState53 = useState(function () {
+    _useState58 = _slicedToArray(_useState57, 2),
+    year = _useState58[0],
+    setYear = _useState58[1];
+  var _useState59 = useState(function () {
       try {
         return localStorage.getItem('ciq_comm_qtr') || 'Q1';
       } catch (_e) {
         return 'Q1';
       }
     }),
-    _useState54 = _slicedToArray(_useState53, 2),
-    qtr = _useState54[0],
-    setQtr = _useState54[1];
-  var _useState55 = useState(''),
-    _useState56 = _slicedToArray(_useState55, 2),
-    nsAmt = _useState56[0],
-    setNsAmt = _useState56[1];
-  var _useState57 = useState(''),
-    _useState58 = _slicedToArray(_useState57, 2),
-    rnAmt = _useState58[0],
-    setRnAmt = _useState58[1];
-  var _useState59 = useState(false),
     _useState60 = _slicedToArray(_useState59, 2),
-    nsOverride = _useState60[0],
-    setNsOverride = _useState60[1];
-  var _useState61 = useState(false),
+    qtr = _useState60[0],
+    setQtr = _useState60[1];
+  var _useState61 = useState(''),
     _useState62 = _slicedToArray(_useState61, 2),
-    rnOverride = _useState62[0],
-    setRnOverride = _useState62[1];
-  var _useState63 = useState(null),
+    nsAmt = _useState62[0],
+    setNsAmt = _useState62[1];
+  var _useState63 = useState(''),
     _useState64 = _slicedToArray(_useState63, 2),
-    showDetailFor = _useState64[0],
-    setShowDetailFor = _useState64[1];
-  var _useState65 = useState(DEFAULT_NS_STREAMS),
+    rnAmt = _useState64[0],
+    setRnAmt = _useState64[1];
+  var _useState65 = useState(false),
     _useState66 = _slicedToArray(_useState65, 2),
-    nsStreams = _useState66[0],
-    setNsStreams = _useState66[1];
-  var _useState67 = useState(DEFAULT_RN_STREAMS),
+    nsOverride = _useState66[0],
+    setNsOverride = _useState66[1];
+  var _useState67 = useState(false),
     _useState68 = _slicedToArray(_useState67, 2),
-    rnStreams = _useState68[0],
-    setRnStreams = _useState68[1];
-  var _useState69 = useState(false),
+    rnOverride = _useState68[0],
+    setRnOverride = _useState68[1];
+  var _useState69 = useState(null),
     _useState70 = _slicedToArray(_useState69, 2),
-    showStreamEdit = _useState70[0],
-    setShowStreamEdit = _useState70[1];
-  var _useState71 = useState(false),
+    showDetailFor = _useState70[0],
+    setShowDetailFor = _useState70[1];
+  var _useState71 = useState(DEFAULT_NS_STREAMS),
     _useState72 = _slicedToArray(_useState71, 2),
-    showCodeEditor = _useState72[0],
-    setShowCodeEditor = _useState72[1];
+    nsStreams = _useState72[0],
+    setNsStreams = _useState72[1];
+  var _useState73 = useState(DEFAULT_RN_STREAMS),
+    _useState74 = _slicedToArray(_useState73, 2),
+    rnStreams = _useState74[0],
+    setRnStreams = _useState74[1];
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    showStreamEdit = _useState76[0],
+    setShowStreamEdit = _useState76[1];
+  var _useState77 = useState(false),
+    _useState78 = _slicedToArray(_useState77, 2),
+    showCodeEditor = _useState78[0],
+    setShowCodeEditor = _useState78[1];
   var curYear = new Date().getFullYear();
   var ii = {
     background: t.surface,
@@ -4346,11 +4493,11 @@ function CommissionTab(_ref40) {
   var debugMsg = sel && !role ? '⚠️ Employee found but Role is empty in Sheet 4' : sel && role && !['support head', 'support incharge', 'support in-charge', 'regional sales head', 'rsm', 'sales manager', 'manager', 'sales consultant', 'consultant'].some(function (r) {
     return role.toLowerCase().includes(r);
   }) ? "\u26A0\uFE0F Role \"".concat(role, "\" not recognised \u2014 check Sheet 4 spelling") : '';
-  function CRow(_ref41) {
-    var label = _ref41.label,
-      amount = _ref41.amount,
-      note = _ref41.note,
-      warn = _ref41.warn;
+  function CRow(_ref43) {
+    var label = _ref43.label,
+      amount = _ref43.amount,
+      note = _ref43.note,
+      warn = _ref43.warn;
     return /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
@@ -4536,11 +4683,11 @@ function CommissionTab(_ref40) {
       gap: 10,
       marginBottom: 14
     }
-  }, [['Annual Target', "AED ".concat(fmt(annTarget)), t.muted], ["".concat(qtr, " Total Target"), "AED ".concat(fmt(qTotalTgt)), t.text], ["".concat(qtr, " Sales Target"), "AED ".concat(fmt(qSalesTgt)), t.accent], ["".concat(qtr, " Renewal Target"), "AED ".concat(fmt(qRenewTgt)), '#10b981'], ["Sales Collected", "AED ".concat(fmt(ns)), ns >= qSalesTgt && qSalesTgt > 0 ? t.success : t.text], ["Renewals Collected", "AED ".concat(fmt(rn)), rn >= qRenewTgt && qRenewTgt > 0 ? t.success : t.text]].map(function (_ref42) {
-    var _ref43 = _slicedToArray(_ref42, 3),
-      lbl = _ref43[0],
-      val = _ref43[1],
-      col = _ref43[2];
+  }, [['Annual Target', "AED ".concat(fmt(annTarget)), t.muted], ["".concat(qtr, " Total Target"), "AED ".concat(fmt(qTotalTgt)), t.text], ["".concat(qtr, " Sales Target"), "AED ".concat(fmt(qSalesTgt)), t.accent], ["".concat(qtr, " Renewal Target"), "AED ".concat(fmt(qRenewTgt)), '#10b981'], ["Sales Collected", "AED ".concat(fmt(ns)), ns >= qSalesTgt && qSalesTgt > 0 ? t.success : t.text], ["Renewals Collected", "AED ".concat(fmt(rn)), rn >= qRenewTgt && qRenewTgt > 0 ? t.success : t.text]].map(function (_ref44) {
+    var _ref45 = _slicedToArray(_ref44, 3),
+      lbl = _ref45[0],
+      val = _ref45[1],
+      col = _ref45[2];
     return /*#__PURE__*/React.createElement("div", {
       key: lbl,
       style: {
@@ -4570,11 +4717,11 @@ function CommissionTab(_ref40) {
       gap: 10,
       marginBottom: 14
     }
-  }, [["Sales vs ".concat(qtr, " Sales Tgt"), result.qSalesPct, t.accent], ["Renewals vs ".concat(qtr, " Renewal Tgt"), result.rnPct, '#10b981'], ["Total vs ".concat(qtr, " Total Tgt"), result.qTotalPct, '#8b5cf6']].map(function (_ref44) {
-    var _ref45 = _slicedToArray(_ref44, 3),
-      lbl = _ref45[0],
-      val = _ref45[1],
-      col = _ref45[2];
+  }, [["Sales vs ".concat(qtr, " Sales Tgt"), result.qSalesPct, t.accent], ["Renewals vs ".concat(qtr, " Renewal Tgt"), result.rnPct, '#10b981'], ["Total vs ".concat(qtr, " Total Tgt"), result.qTotalPct, '#8b5cf6']].map(function (_ref46) {
+    var _ref47 = _slicedToArray(_ref46, 3),
+      lbl = _ref47[0],
+      val = _ref47[1],
+      col = _ref47[2];
     return /*#__PURE__*/React.createElement("div", {
       key: lbl,
       style: {
@@ -4981,25 +5128,25 @@ function CommissionTab(_ref40) {
 }
 
 /* ── Commission Code Editor ── */
-function CommissionCodeEditor(_ref46) {
-  var t = _ref46.t,
-    dark = _ref46.dark;
-  var _useState73 = useState(''),
-    _useState74 = _slicedToArray(_useState73, 2),
-    code = _useState74[0],
-    setCode = _useState74[1];
-  var _useState75 = useState(''),
-    _useState76 = _slicedToArray(_useState75, 2),
-    prompt = _useState76[0],
-    setPrompt = _useState76[1];
-  var _useState77 = useState(false),
-    _useState78 = _slicedToArray(_useState77, 2),
-    loading = _useState78[0],
-    setLoading = _useState78[1];
+function CommissionCodeEditor(_ref48) {
+  var t = _ref48.t,
+    dark = _ref48.dark;
   var _useState79 = useState(''),
     _useState80 = _slicedToArray(_useState79, 2),
-    msg = _useState80[0],
-    setMsg = _useState80[1];
+    code = _useState80[0],
+    setCode = _useState80[1];
+  var _useState81 = useState(''),
+    _useState82 = _slicedToArray(_useState81, 2),
+    prompt = _useState82[0],
+    setPrompt = _useState82[1];
+  var _useState83 = useState(false),
+    _useState84 = _slicedToArray(_useState83, 2),
+    loading = _useState84[0],
+    setLoading = _useState84[1];
+  var _useState85 = useState(''),
+    _useState86 = _slicedToArray(_useState85, 2),
+    msg = _useState86[0],
+    setMsg = _useState86[1];
   var ii = {
     background: t.surface,
     border: "1px solid ".concat(t.border),
@@ -5097,11 +5244,11 @@ function CommissionCodeEditor(_ref46) {
 }
 
 /* ── Pipeline Tab ── */
-function PipelineTab(_ref47) {
-  var s3 = _ref47.s3,
-    sheets = _ref47.sheets,
-    t = _ref47.t,
-    dark = _ref47.dark;
+function PipelineTab(_ref49) {
+  var s3 = _ref49.s3,
+    sheets = _ref49.sheets,
+    t = _ref49.t,
+    dark = _ref49.dark;
   var tt = {
     background: t.card,
     border: "1px solid ".concat(t.border),
@@ -5138,26 +5285,26 @@ function PipelineTab(_ref47) {
       })
     };
   }, [s3, s4map]);
-  var _useState81 = useState([]),
-    _useState82 = _slicedToArray(_useState81, 2),
-    fRegion = _useState82[0],
-    setFRegion = _useState82[1];
-  var _useState83 = useState([]),
-    _useState84 = _slicedToArray(_useState83, 2),
-    fBranch = _useState84[0],
-    setFBranch = _useState84[1];
-  var _useState85 = useState([]),
-    _useState86 = _slicedToArray(_useState85, 2),
-    fTeam = _useState86[0],
-    setFTeam = _useState86[1];
   var _useState87 = useState([]),
     _useState88 = _slicedToArray(_useState87, 2),
-    fExec = _useState88[0],
-    setFExec = _useState88[1];
+    fRegion = _useState88[0],
+    setFRegion = _useState88[1];
   var _useState89 = useState([]),
     _useState90 = _slicedToArray(_useState89, 2),
-    fMonth = _useState90[0],
-    setFMonth = _useState90[1];
+    fBranch = _useState90[0],
+    setFBranch = _useState90[1];
+  var _useState91 = useState([]),
+    _useState92 = _slicedToArray(_useState91, 2),
+    fTeam = _useState92[0],
+    setFTeam = _useState92[1];
+  var _useState93 = useState([]),
+    _useState94 = _slicedToArray(_useState93, 2),
+    fExec = _useState94[0],
+    setFExec = _useState94[1];
+  var _useState95 = useState([]),
+    _useState96 = _slicedToArray(_useState95, 2),
+    fMonth = _useState96[0],
+    setFMonth = _useState96[1];
   var filtered = useMemo(function () {
     return s3.filter(function (r) {
       if (fRegion.length && !fRegion.includes(r.Region || r.Branch)) return false;
@@ -5245,10 +5392,10 @@ function PipelineTab(_ref47) {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref48) {
-      var _ref49 = _slicedToArray(_ref48, 2),
-        name = _ref49[0],
-        value = _ref49[1];
+    }).map(function (_ref50) {
+      var _ref51 = _slicedToArray(_ref50, 2),
+        name = _ref51[0],
+        value = _ref51[1];
       return {
         name: name,
         value: value
@@ -5526,25 +5673,25 @@ function PipelineTab(_ref47) {
 }
 
 /* ── Pipeline Raw Data Sheet ── */
-function PipelineRawSheet(_ref50) {
-  var s3 = _ref50.s3,
-    t = _ref50.t;
-  var _useState91 = useState(''),
-    _useState92 = _slicedToArray(_useState91, 2),
-    search = _useState92[0],
-    setSearch = _useState92[1];
-  var _useState93 = useState(''),
-    _useState94 = _slicedToArray(_useState93, 2),
-    sortCol = _useState94[0],
-    setSortCol = _useState94[1];
-  var _useState95 = useState(1),
-    _useState96 = _slicedToArray(_useState95, 2),
-    sortDir = _useState96[0],
-    setSortDir = _useState96[1];
-  var _useState97 = useState(0),
+function PipelineRawSheet(_ref52) {
+  var s3 = _ref52.s3,
+    t = _ref52.t;
+  var _useState97 = useState(''),
     _useState98 = _slicedToArray(_useState97, 2),
-    page = _useState98[0],
-    setPage = _useState98[1];
+    search = _useState98[0],
+    setSearch = _useState98[1];
+  var _useState99 = useState(''),
+    _useState100 = _slicedToArray(_useState99, 2),
+    sortCol = _useState100[0],
+    setSortCol = _useState100[1];
+  var _useState101 = useState(1),
+    _useState102 = _slicedToArray(_useState101, 2),
+    sortDir = _useState102[0],
+    setSortDir = _useState102[1];
+  var _useState103 = useState(0),
+    _useState104 = _slicedToArray(_useState103, 2),
+    page = _useState104[0],
+    setPage = _useState104[1];
   var PAGE_SIZE = 50;
   var headers = useMemo(function () {
     if (!s3.length) return [];
@@ -5761,12 +5908,12 @@ function PipelineRawSheet(_ref50) {
 }
 
 /* ── Performance Tab ── */
-function PerformanceTab(_ref51) {
-  var allTx = _ref51.allTx,
-    targets = _ref51.targets,
-    sheets = _ref51.sheets,
-    t = _ref51.t;
-  var _useState99 = useState(function () {
+function PerformanceTab(_ref53) {
+  var allTx = _ref53.allTx,
+    targets = _ref53.targets,
+    sheets = _ref53.sheets,
+    t = _ref53.t;
+  var _useState105 = useState(function () {
       try {
         var v = localStorage.getItem('ciq_perf_year');
         return v ? parseInt(v) : new Date().getFullYear();
@@ -5774,41 +5921,41 @@ function PerformanceTab(_ref51) {
         return new Date().getFullYear();
       }
     }),
-    _useState100 = _slicedToArray(_useState99, 2),
-    selYear = _useState100[0],
-    setSelYear = _useState100[1];
-  var _useState101 = useState('Q1'),
-    _useState102 = _slicedToArray(_useState101, 2),
-    selQtr = _useState102[0],
-    setSelQtr = _useState102[1];
-  var _useState103 = useState('monthly'),
-    _useState104 = _slicedToArray(_useState103, 2),
-    view = _useState104[0],
-    setView = _useState104[1];
-  var _useState105 = useState('branch'),
     _useState106 = _slicedToArray(_useState105, 2),
-    compareView = _useState106[0],
-    setCompareView = _useState106[1];
-  var _useState107 = useState('branch'),
+    selYear = _useState106[0],
+    setSelYear = _useState106[1];
+  var _useState107 = useState('Q1'),
     _useState108 = _slicedToArray(_useState107, 2),
-    treeLevel = _useState108[0],
-    setTreeLevel = _useState108[1]; // 'branch' | 'team' | 'employee'
-  var _useState109 = useState({}),
+    selQtr = _useState108[0],
+    setSelQtr = _useState108[1];
+  var _useState109 = useState('monthly'),
     _useState110 = _slicedToArray(_useState109, 2),
-    expanded = _useState110[0],
-    setExpanded = _useState110[1]; // {key: true} map
-  var _useState111 = useState([]),
+    view = _useState110[0],
+    setView = _useState110[1];
+  var _useState111 = useState('branch'),
     _useState112 = _slicedToArray(_useState111, 2),
-    fMonth = _useState112[0],
-    setFMonth = _useState112[1];
-  var _useState113 = useState([]),
+    compareView = _useState112[0],
+    setCompareView = _useState112[1];
+  var _useState113 = useState('branch'),
     _useState114 = _slicedToArray(_useState113, 2),
-    fTeam = _useState114[0],
-    setFTeam = _useState114[1];
-  var _useState115 = useState([]),
+    treeLevel = _useState114[0],
+    setTreeLevel = _useState114[1]; // 'branch' | 'team' | 'employee'
+  var _useState115 = useState({}),
     _useState116 = _slicedToArray(_useState115, 2),
-    fBranch = _useState116[0],
-    setFBranch = _useState116[1];
+    expanded = _useState116[0],
+    setExpanded = _useState116[1]; // {key: true} map
+  var _useState117 = useState([]),
+    _useState118 = _slicedToArray(_useState117, 2),
+    fMonth = _useState118[0],
+    setFMonth = _useState118[1];
+  var _useState119 = useState([]),
+    _useState120 = _slicedToArray(_useState119, 2),
+    fTeam = _useState120[0],
+    setFTeam = _useState120[1];
+  var _useState121 = useState([]),
+    _useState122 = _slicedToArray(_useState121, 2),
+    fBranch = _useState122[0],
+    setFBranch = _useState122[1];
   var inp = {
     background: t.surface,
     border: "1px solid ".concat(t.border),
@@ -5928,11 +6075,11 @@ function PerformanceTab(_ref51) {
 
   // ── Build the full grouped structure (branch → team → employees) ──────────
   var groupedData = useMemo(function () {
-    var _ref52;
+    var _ref54;
     var curYr = String(selYear);
     var qMos = Q_MONTHS[selQtr] || [];
     var qIdx = ['Q1', 'Q2', 'Q3', 'Q4'].indexOf(selQtr);
-    var ytdMos = (_ref52 = []).concat.apply(_ref52, _toConsumableArray(['Q1', 'Q2', 'Q3', 'Q4'].slice(0, qIdx + 1).map(function (q) {
+    var ytdMos = (_ref54 = []).concat.apply(_ref54, _toConsumableArray(['Q1', 'Q2', 'Q3', 'Q4'].slice(0, qIdx + 1).map(function (q) {
       return Q_MONTHS[q];
     })));
     var baseTx = allTx.filter(function (r) {
@@ -6204,10 +6351,10 @@ function PerformanceTab(_ref51) {
       borderRadius: 8,
       overflow: 'hidden'
     }
-  }, [['monthly', '📅 Monthly'], ['employee', '👤 Performance'], ['compare', '📊 Year Comparison'], ['org', '🌳 Org View']].map(function (_ref53) {
-    var _ref54 = _slicedToArray(_ref53, 2),
-      v = _ref54[0],
-      l = _ref54[1];
+  }, [['monthly', '📅 Monthly'], ['employee', '👤 Performance'], ['compare', '📊 Year Comparison'], ['org', '🌳 Org View']].map(function (_ref55) {
+    var _ref56 = _slicedToArray(_ref55, 2),
+      v = _ref56[0],
+      l = _ref56[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -6290,10 +6437,10 @@ function PerformanceTab(_ref51) {
       flexDirection: 'column',
       gap: 4
     }
-  }, [['branch', '🏢 Branch'], ['team', '👥 Team'], ['employee', '👤 Employee']].map(function (_ref55) {
-    var _ref56 = _slicedToArray(_ref55, 2),
-      v = _ref56[0],
-      l = _ref56[1];
+  }, [['branch', '🏢 Branch'], ['team', '👥 Team'], ['employee', '👤 Employee']].map(function (_ref57) {
+    var _ref58 = _slicedToArray(_ref57, 2),
+      v = _ref58[0],
+      l = _ref58[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -6868,23 +7015,23 @@ function PerformanceTab(_ref51) {
 
 /* ── Overview Tab ── */
 /* ── Alerts Banner ── */
-function AlertsBanner(_ref57) {
-  var filtered = _ref57.filtered,
-    sheets = _ref57.sheets,
-    targets = _ref57.targets,
-    t = _ref57.t;
-  var _useState117 = useState(50),
-    _useState118 = _slicedToArray(_useState117, 2),
-    attThresh = _useState118[0],
-    setAttThresh = _useState118[1];
-  var _useState119 = useState(12),
-    _useState120 = _slicedToArray(_useState119, 2),
-    unbilledMonths = _useState120[0],
-    setUnbilledMonths = _useState120[1];
-  var _useState121 = useState(false),
-    _useState122 = _slicedToArray(_useState121, 2),
-    expanded = _useState122[0],
-    setExpanded = _useState122[1];
+function AlertsBanner(_ref59) {
+  var filtered = _ref59.filtered,
+    sheets = _ref59.sheets,
+    targets = _ref59.targets,
+    t = _ref59.t;
+  var _useState123 = useState(50),
+    _useState124 = _slicedToArray(_useState123, 2),
+    attThresh = _useState124[0],
+    setAttThresh = _useState124[1];
+  var _useState125 = useState(12),
+    _useState126 = _slicedToArray(_useState125, 2),
+    unbilledMonths = _useState126[0],
+    setUnbilledMonths = _useState126[1];
+  var _useState127 = useState(false),
+    _useState128 = _slicedToArray(_useState127, 2),
+    expanded = _useState128[0],
+    setExpanded = _useState128[1];
   var curYear = new Date().getFullYear();
   var curMonth = new Date().getMonth() + 1;
   var curQ = curMonth <= 3 ? 'Q1' : curMonth <= 6 ? 'Q2' : curMonth <= 9 ? 'Q3' : 'Q4';
@@ -6936,13 +7083,13 @@ function AlertsBanner(_ref57) {
       var score = r._year * 100 + (MONTHS.indexOf(r.Month) + 1);
       if (!lastSeen[c] || score > lastSeen[c]) lastSeen[c] = score;
     });
-    return Object.entries(lastSeen).filter(function (_ref58) {
-      var _ref59 = _slicedToArray(_ref58, 2),
-        s = _ref59[1];
+    return Object.entries(lastSeen).filter(function (_ref60) {
+      var _ref61 = _slicedToArray(_ref60, 2),
+        s = _ref61[1];
       return s < cutoff;
-    }).map(function (_ref60) {
-      var _ref61 = _slicedToArray(_ref60, 1),
-        name = _ref61[0];
+    }).map(function (_ref62) {
+      var _ref63 = _slicedToArray(_ref62, 1),
+        name = _ref63[0];
       return name;
     }).sort();
   }, [filtered, unbilledMonths]);
@@ -7124,21 +7271,21 @@ function AlertsBanner(_ref57) {
     }
   }, "+", unbilledAlerts.length - 20, " more")))));
 }
-function OverviewTab(_ref62) {
-  var filtered = _ref62.filtered,
-    totalCollected = _ref62.totalCollected,
-    totalTx = _ref62.totalTx,
-    uniqueCustomers = _ref62.uniqueCustomers,
-    uniqueEmployees = _ref62.uniqueEmployees,
-    monthlyTrend = _ref62.monthlyTrend,
-    byPtype = _ref62.byPtype,
-    byRegion = _ref62.byRegion,
-    leaderboard = _ref62.leaderboard,
-    topCustomers = _ref62.topCustomers,
-    retVsNew = _ref62.retVsNew,
-    concentration = _ref62.concentration,
-    t = _ref62.t,
-    allTx = _ref62.allTx;
+function OverviewTab(_ref64) {
+  var filtered = _ref64.filtered,
+    totalCollected = _ref64.totalCollected,
+    totalTx = _ref64.totalTx,
+    uniqueCustomers = _ref64.uniqueCustomers,
+    uniqueEmployees = _ref64.uniqueEmployees,
+    monthlyTrend = _ref64.monthlyTrend,
+    byPtype = _ref64.byPtype,
+    byRegion = _ref64.byRegion,
+    leaderboard = _ref64.leaderboard,
+    topCustomers = _ref64.topCustomers,
+    retVsNew = _ref64.retVsNew,
+    concentration = _ref64.concentration,
+    t = _ref64.t,
+    allTx = _ref64.allTx;
   var maxC = topCustomers[0] && topCustomers[0].value || 1;
   var maxE = leaderboard.execs[0] && leaderboard.execs[0].amount || 1;
   var tt = {
@@ -7214,10 +7361,10 @@ function OverviewTab(_ref62) {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref63) {
-      var _ref64 = _slicedToArray(_ref63, 2),
-        n = _ref64[0],
-        v = _ref64[1];
+    }).map(function (_ref65) {
+      var _ref66 = _slicedToArray(_ref65, 2),
+        n = _ref66[0],
+        v = _ref66[1];
       return {
         name: n,
         value: v
@@ -7510,16 +7657,16 @@ function OverviewTab(_ref62) {
 
 /* ── Analysis Tab ── */
 /* ── Standings Card (Analysis Tab) ── */
-function StandingsCard(_ref65) {
-  var filtered = _ref65.filtered,
-    targets = _ref65.targets,
-    filters = _ref65.filters,
-    sheets = _ref65.sheets,
-    t = _ref65.t;
-  var _useState123 = useState('employee'),
-    _useState124 = _slicedToArray(_useState123, 2),
-    view = _useState124[0],
-    setView = _useState124[1];
+function StandingsCard(_ref67) {
+  var filtered = _ref67.filtered,
+    targets = _ref67.targets,
+    filters = _ref67.filters,
+    sheets = _ref67.sheets,
+    t = _ref67.t;
+  var _useState129 = useState('employee'),
+    _useState130 = _slicedToArray(_useState129, 2),
+    view = _useState130[0],
+    setView = _useState130[1];
   var curYear = new Date().getFullYear();
 
   // Most recent selected year, or current year if none selected
@@ -7694,10 +7841,10 @@ function StandingsCard(_ref65) {
       gap: 6,
       marginBottom: 14
     }
-  }, VIEWS.map(function (_ref66) {
-    var _ref67 = _slicedToArray(_ref66, 2),
-      v = _ref67[0],
-      l = _ref67[1];
+  }, VIEWS.map(function (_ref68) {
+    var _ref69 = _slicedToArray(_ref68, 2),
+      v = _ref69[0],
+      l = _ref69[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -7834,18 +7981,18 @@ function StandingsCard(_ref65) {
     }, "AED ", fmt(row.target)))));
   })));
 }
-function AnalysisTab(_ref68) {
-  var filtered = _ref68.filtered,
-    yoyData = _ref68.yoyData,
-    yoyYears = _ref68.yoyYears,
-    heatmapData = _ref68.heatmapData,
-    getHeatColor = _ref68.getHeatColor,
-    slippage = _ref68.slippage,
-    t = _ref68.t,
-    dark = _ref68.dark,
-    targets = _ref68.targets,
-    filters = _ref68.filters,
-    sheets = _ref68.sheets;
+function AnalysisTab(_ref70) {
+  var filtered = _ref70.filtered,
+    yoyData = _ref70.yoyData,
+    yoyYears = _ref70.yoyYears,
+    heatmapData = _ref70.heatmapData,
+    getHeatColor = _ref70.getHeatColor,
+    slippage = _ref70.slippage,
+    t = _ref70.t,
+    dark = _ref70.dark,
+    targets = _ref70.targets,
+    filters = _ref70.filters,
+    sheets = _ref70.sheets;
   var YCOL = ['#3b82f6', '#f43f5e', '#f59e0b', '#10b981', '#8b5cf6'];
   var tt = {
     background: t.card,
@@ -7894,11 +8041,11 @@ function AnalysisTab(_ref68) {
   }, [slippage]);
 
   // ── Unbilled customers (no transaction in last N months) ─────────────────
-  var _useState125 = useState(''),
-    _useState126 = _slicedToArray(_useState125, 2),
-    unbilledSearch = _useState126[0],
-    setUnbilledSearch = _useState126[1];
-  var _useState127 = useState(function () {
+  var _useState131 = useState(''),
+    _useState132 = _slicedToArray(_useState131, 2),
+    unbilledSearch = _useState132[0],
+    setUnbilledSearch = _useState132[1];
+  var _useState133 = useState(function () {
       try {
         var v = localStorage.getItem('ciq_unbilled_months');
         return v ? parseInt(v) : 16;
@@ -7906,9 +8053,9 @@ function AnalysisTab(_ref68) {
         return 16;
       }
     }),
-    _useState128 = _slicedToArray(_useState127, 2),
-    unbilledMonths = _useState128[0],
-    setUnbilledMonths = _useState128[1];
+    _useState134 = _slicedToArray(_useState133, 2),
+    unbilledMonths = _useState134[0],
+    setUnbilledMonths = _useState134[1];
   var unbilled = useMemo(function () {
     if (!filtered || !filtered.length) return [];
     var now = new Date();
@@ -7947,14 +8094,14 @@ function AnalysisTab(_ref68) {
       if (c) totalSpend[c] = (totalSpend[c] || 0) + r._amount;
     });
     var cutoffScore = cy * 100 + cm;
-    return Object.entries(lastSeen).filter(function (_ref69) {
-      var _ref70 = _slicedToArray(_ref69, 2),
-        v = _ref70[1];
-      return v.score < cutoffScore;
-    }).map(function (_ref71) {
+    return Object.entries(lastSeen).filter(function (_ref71) {
       var _ref72 = _slicedToArray(_ref71, 2),
-        name = _ref72[0],
         v = _ref72[1];
+      return v.score < cutoffScore;
+    }).map(function (_ref73) {
+      var _ref74 = _slicedToArray(_ref73, 2),
+        name = _ref74[0],
+        v = _ref74[1];
       return {
         name: name,
         lastYear: v.year,
@@ -8406,12 +8553,12 @@ function AnalysisTab(_ref68) {
 }
 
 /* ── Reverse Calculator Tab ── */
-function ReverseCalcTab(_ref73) {
-  var allTx = _ref73.allTx,
-    targets = _ref73.targets,
-    sheets = _ref73.sheets,
-    t = _ref73.t,
-    dark = _ref73.dark;
+function ReverseCalcTab(_ref75) {
+  var allTx = _ref75.allTx,
+    targets = _ref75.targets,
+    sheets = _ref75.sheets,
+    t = _ref75.t,
+    dark = _ref75.dark;
   var curYear = new Date().getFullYear();
   var availYears = useMemo(function () {
     return _toConsumableArray(new Set(allTx.map(function (r) {
@@ -8430,30 +8577,30 @@ function ReverseCalcTab(_ref73) {
       return a.name.localeCompare(b.name);
     });
   }, [sheets.s4]);
-  var _useState129 = useState(''),
-    _useState130 = _slicedToArray(_useState129, 2),
-    selExec = _useState130[0],
-    setSelExec = _useState130[1];
-  var _useState131 = useState(curYear),
-    _useState132 = _slicedToArray(_useState131, 2),
-    selYear = _useState132[0],
-    setSelYear = _useState132[1];
-  var _useState133 = useState(''),
-    _useState134 = _slicedToArray(_useState133, 2),
-    avgDeal = _useState134[0],
-    setAvgDeal = _useState134[1];
   var _useState135 = useState(''),
     _useState136 = _slicedToArray(_useState135, 2),
-    convRate = _useState136[0],
-    setConvRate = _useState136[1];
-  var _useState137 = useState(''),
+    selExec = _useState136[0],
+    setSelExec = _useState136[1];
+  var _useState137 = useState(curYear),
     _useState138 = _slicedToArray(_useState137, 2),
-    daysToClose = _useState138[0],
-    setDaysToClose = _useState138[1];
+    selYear = _useState138[0],
+    setSelYear = _useState138[1];
   var _useState139 = useState(''),
     _useState140 = _slicedToArray(_useState139, 2),
-    onHand = _useState140[0],
-    setOnHand = _useState140[1];
+    avgDeal = _useState140[0],
+    setAvgDeal = _useState140[1];
+  var _useState141 = useState(''),
+    _useState142 = _slicedToArray(_useState141, 2),
+    convRate = _useState142[0],
+    setConvRate = _useState142[1];
+  var _useState143 = useState(''),
+    _useState144 = _slicedToArray(_useState143, 2),
+    daysToClose = _useState144[0],
+    setDaysToClose = _useState144[1];
+  var _useState145 = useState(''),
+    _useState146 = _slicedToArray(_useState145, 2),
+    onHand = _useState146[0],
+    setOnHand = _useState146[1];
 
   // Collected YTD for selected exec+year from Sheet2
   var collectedYTD = useMemo(function () {
@@ -8998,14 +9145,14 @@ function ReverseCalcTab(_ref73) {
 
 /* ── Main App ── */
 /* ── Data Quality Banner ── */
-function DataQualityBanner(_ref74) {
-  var unmapped = _ref74.unmapped,
-    sheets = _ref74.sheets,
-    t = _ref74.t;
-  var _useState141 = useState(false),
-    _useState142 = _slicedToArray(_useState141, 2),
-    open = _useState142[0],
-    setOpen = _useState142[1];
+function DataQualityBanner(_ref76) {
+  var unmapped = _ref76.unmapped,
+    sheets = _ref76.sheets,
+    t = _ref76.t;
+  var _useState147 = useState(false),
+    _useState148 = _slicedToArray(_useState147, 2),
+    open = _useState148[0],
+    setOpen = _useState148[1];
   var noStream = useMemo(function () {
     return sheets.s2.filter(function (r) {
       return !r.Stream || !r.Stream.trim();
@@ -9118,22 +9265,22 @@ function DataQualityBanner(_ref74) {
     }
   }, "\uD83D\uDCC4 Contracts no CAM: ", s5NoOwner))));
 }
-function ContractsView(_ref75) {
-  var detail = _ref75.detail,
-    moName = _ref75.moName,
-    t = _ref75.t;
-  var _useState143 = useState(''),
-    _useState144 = _slicedToArray(_useState143, 2),
-    filterMonth = _useState144[0],
-    setFilterMonth = _useState144[1];
-  var _useState145 = useState(''),
-    _useState146 = _slicedToArray(_useState145, 2),
-    filterType = _useState146[0],
-    setFilterType = _useState146[1];
-  var _useState147 = useState(null),
-    _useState148 = _slicedToArray(_useState147, 2),
-    sortDir = _useState148[0],
-    setSortDir = _useState148[1]; // null=default, 'asc', 'desc'
+function ContractsView(_ref77) {
+  var detail = _ref77.detail,
+    moName = _ref77.moName,
+    t = _ref77.t;
+  var _useState149 = useState(''),
+    _useState150 = _slicedToArray(_useState149, 2),
+    filterMonth = _useState150[0],
+    setFilterMonth = _useState150[1];
+  var _useState151 = useState(''),
+    _useState152 = _slicedToArray(_useState151, 2),
+    filterType = _useState152[0],
+    setFilterType = _useState152[1];
+  var _useState153 = useState(null),
+    _useState154 = _slicedToArray(_useState153, 2),
+    sortDir = _useState154[0],
+    setSortDir = _useState154[1]; // null=default, 'asc', 'desc'
 
   var months = useMemo(function () {
     return _toConsumableArray(new Set(detail.map(function (r) {
@@ -9424,14 +9571,14 @@ function ContractsView(_ref75) {
 }
 
 /* ── Due Soon Card ── */
-function DueSoonCard(_ref76) {
-  var s5 = _ref76.s5,
-    selPerson = _ref76.selPerson,
-    t = _ref76.t;
-  var _useState149 = useState(60),
-    _useState150 = _slicedToArray(_useState149, 2),
-    win = _useState150[0],
-    setWin = _useState150[1];
+function DueSoonCard(_ref78) {
+  var s5 = _ref78.s5,
+    selPerson = _ref78.selPerson,
+    t = _ref78.t;
+  var _useState155 = useState(60),
+    _useState156 = _slicedToArray(_useState155, 2),
+    win = _useState156[0],
+    setWin = _useState156[1];
   var now = new Date();
   var curYear = now.getFullYear();
   var curMo = now.getMonth() + 1;
@@ -9551,30 +9698,30 @@ function DueSoonCard(_ref76) {
     }, "~", r.daysDiff, "d")));
   })));
 }
-function SupportPlanningTab(_ref77) {
-  var sheets = _ref77.sheets,
-    targets = _ref77.targets,
-    saveTargets = _ref77.saveTargets,
-    t = _ref77.t;
+function SupportPlanningTab(_ref79) {
+  var sheets = _ref79.sheets,
+    targets = _ref79.targets,
+    saveTargets = _ref79.saveTargets,
+    t = _ref79.t;
   var curYear = new Date().getFullYear();
-  var _useState151 = useState(curYear),
-    _useState152 = _slicedToArray(_useState151, 2),
-    selYear = _useState152[0],
-    setSelYear = _useState152[1];
-  var _useState153 = useState(function () {
+  var _useState157 = useState(curYear),
+    _useState158 = _slicedToArray(_useState157, 2),
+    selYear = _useState158[0],
+    setSelYear = _useState158[1];
+  var _useState159 = useState(function () {
       try {
         return localStorage.getItem('ciq_renew_person') || '';
       } catch (_e) {
         return '';
       }
     }),
-    _useState154 = _slicedToArray(_useState153, 2),
-    selPerson = _useState154[0],
-    setSelPerson = _useState154[1];
-  var _useState155 = useState('summary'),
-    _useState156 = _slicedToArray(_useState155, 2),
-    view = _useState156[0],
-    setView = _useState156[1];
+    _useState160 = _slicedToArray(_useState159, 2),
+    selPerson = _useState160[0],
+    setSelPerson = _useState160[1];
+  var _useState161 = useState('summary'),
+    _useState162 = _slicedToArray(_useState161, 2),
+    view = _useState162[0],
+    setView = _useState162[1];
   var ii = {
     background: t.surface,
     border: '1px solid ' + t.border,
@@ -9980,10 +10127,10 @@ function SupportPlanningTab(_ref77) {
       borderRadius: 8,
       overflow: 'hidden'
     }
-  }, [['summary', 'Summary'], ['schedule', 'Monthly Schedule'], ['contracts', 'Contracts'], ['cashflow', 'Branch Cash Flow']].map(function (_ref78) {
-    var _ref79 = _slicedToArray(_ref78, 2),
-      v = _ref79[0],
-      l = _ref79[1];
+  }, [['summary', 'Summary'], ['schedule', 'Monthly Schedule'], ['contracts', 'Contracts'], ['cashflow', 'Branch Cash Flow']].map(function (_ref80) {
+    var _ref81 = _slicedToArray(_ref80, 2),
+      v = _ref81[0],
+      l = _ref81[1];
     return /*#__PURE__*/React.createElement("button", {
       key: v,
       onClick: function onClick() {
@@ -10481,21 +10628,21 @@ function SupportPlanningTab(_ref77) {
 }
 
 /* ── Notification Bell (combines Alerts + Data Quality into a top-bar dropdown) ── */
-function NotificationBell(_ref80) {
-  var filtered = _ref80.filtered,
-    sheets = _ref80.sheets,
-    targets = _ref80.targets,
-    unmapped = _ref80.unmapped,
-    nameMismatches = _ref80.nameMismatches,
-    t = _ref80.t;
-  var _useState157 = useState(false),
-    _useState158 = _slicedToArray(_useState157, 2),
-    open = _useState158[0],
-    setOpen = _useState158[1];
-  var _useState159 = useState(50),
-    _useState160 = _slicedToArray(_useState159, 2),
-    attThresh = _useState160[0],
-    setAttThresh = _useState160[1];
+function NotificationBell(_ref82) {
+  var filtered = _ref82.filtered,
+    sheets = _ref82.sheets,
+    targets = _ref82.targets,
+    unmapped = _ref82.unmapped,
+    nameMismatches = _ref82.nameMismatches,
+    t = _ref82.t;
+  var _useState163 = useState(false),
+    _useState164 = _slicedToArray(_useState163, 2),
+    open = _useState164[0],
+    setOpen = _useState164[1];
+  var _useState165 = useState(50),
+    _useState166 = _slicedToArray(_useState165, 2),
+    attThresh = _useState166[0],
+    setAttThresh = _useState166[1];
   var curYear = new Date().getFullYear();
   var curMonth = new Date().getMonth() + 1;
   var curQ = curMonth <= 3 ? 'Q1' : curMonth <= 6 ? 'Q2' : curMonth <= 9 ? 'Q3' : 'Q4';
@@ -10806,85 +10953,111 @@ function NotificationBell(_ref80) {
 }
 ReactDOM.createRoot(document.getElementById('root')).render( /*#__PURE__*/React.createElement(App, null));
 function App() {
-  var _useState161 = useState(function () {
+  var _useState167 = useState(function () {
       try {
         return localStorage.getItem('ciq_dark') === '1';
       } catch (_e) {
         return false;
       }
     }),
-    _useState162 = _slicedToArray(_useState161, 2),
-    dark = _useState162[0],
-    setDark = _useState162[1];
-  var _useState163 = useState(function () {
+    _useState168 = _slicedToArray(_useState167, 2),
+    dark = _useState168[0],
+    setDark = _useState168[1];
+  var _useState169 = useState(function () {
       try {
         return localStorage.getItem('ciq_tab') || 'overview';
       } catch (_e) {
         return 'overview';
       }
     }),
-    _useState164 = _slicedToArray(_useState163, 2),
-    tab = _useState164[0],
-    setTab = _useState164[1];
-  var _useState165 = useState(function () {
+    _useState170 = _slicedToArray(_useState169, 2),
+    tab = _useState170[0],
+    setTab = _useState170[1];
+  var _useState171 = useState(function () {
       try {
         return localStorage.getItem('ciq_last_sync') || '';
       } catch (_e) {
         return '';
       }
     }),
-    _useState166 = _slicedToArray(_useState165, 2),
-    lastSync = _useState166[0],
-    setLastSync = _useState166[1];
-  var _useState167 = useState({
+    _useState172 = _slicedToArray(_useState171, 2),
+    lastSync = _useState172[0],
+    setLastSync = _useState172[1];
+  var _useState173 = useState({
       s1: [],
       s2: [],
       s3: [],
       s4: [],
       s5: []
     }),
-    _useState168 = _slicedToArray(_useState167, 2),
-    sheets = _useState168[0],
-    setSheets = _useState168[1];
-  var _useState169 = useState({
+    _useState174 = _slicedToArray(_useState173, 2),
+    sheets = _useState174[0],
+    setSheets = _useState174[1];
+  var _useState175 = useState({
       s1: null,
       s2: null,
       s3: null,
       s4: null,
       s5: null
     }),
-    _useState170 = _slicedToArray(_useState169, 2),
-    sheetMeta = _useState170[0],
-    setSheetMeta = _useState170[1];
-  var _useState171 = useState({}),
-    _useState172 = _slicedToArray(_useState171, 2),
-    targets = _useState172[0],
-    setTargets = _useState172[1];
-  var _useState173 = useState(true),
-    _useState174 = _slicedToArray(_useState173, 2),
-    booting = _useState174[0],
-    setBooting = _useState174[1];
-  var _useState175 = useState(DEFAULT_CREDIT),
     _useState176 = _slicedToArray(_useState175, 2),
-    credit = _useState176[0],
-    setCredit = _useState176[1];
-  var _useState177 = useState(false),
+    sheetMeta = _useState176[0],
+    setSheetMeta = _useState176[1];
+  var _useState177 = useState({}),
     _useState178 = _slicedToArray(_useState177, 2),
-    locked = _useState178[0],
-    setLocked = _useState178[1];
-  var _useState179 = useState(false),
+    targets = _useState178[0],
+    setTargets = _useState178[1];
+  var _useState179 = useState(true),
     _useState180 = _slicedToArray(_useState179, 2),
-    hasPwd = _useState180[0],
-    setHasPwd = _useState180[1];
-  var _useState181 = useState(false),
+    booting = _useState180[0],
+    setBooting = _useState180[1];
+  var _useState181 = useState(DEFAULT_CREDIT),
     _useState182 = _slicedToArray(_useState181, 2),
-    tabUnlocked = _useState182[0],
-    setTabUnlocked = _useState182[1];
-  var _useState183 = useState([]),
+    credit = _useState182[0],
+    setCredit = _useState182[1];
+  var _useState183 = useState(false),
     _useState184 = _slicedToArray(_useState183, 2),
-    unmapped = _useState184[0],
-    setUnmapped = _useState184[1];
-  var _useState185 = useState({
+    locked = _useState184[0],
+    setLocked = _useState184[1];
+  var _useState185 = useState(false),
+    _useState186 = _slicedToArray(_useState185, 2),
+    hasPwd = _useState186[0],
+    setHasPwd = _useState186[1];
+  var _useState187 = useState(false),
+    _useState188 = _slicedToArray(_useState187, 2),
+    tabUnlocked = _useState188[0],
+    setTabUnlocked = _useState188[1];
+  // Password protection: per-browser override (localStorage) wins over the ENABLE_TAB_PASSWORD
+  // default. 'on'/'off' string in localStorage; if unset, use the code constant.
+  var _useState189 = useState(function () {
+      try {
+        var v = localStorage.getItem('ciq_pwd_enabled');
+        if (v === 'on') return true;
+        if (v === 'off') return false;
+      } catch (_e) {}
+      return ENABLE_TAB_PASSWORD;
+    }),
+    _useState190 = _slicedToArray(_useState189, 2),
+    pwdEnabled = _useState190[0],
+    setPwdEnabled = _useState190[1];
+  // Tabs are open if protection is disabled, OR the user has unlocked this session.
+  var tabsOpen = !pwdEnabled || tabUnlocked;
+  // Toggle handler: when turning ON, keep the current session unlocked so the user
+  // doesn't immediately lock themselves out of the Security tab. Protection takes
+  // full effect on the next page load.
+  var setPasswordProtection = useCallback(function (on) {
+    try {
+      localStorage.setItem('ciq_pwd_enabled', on ? 'on' : 'off');
+    } catch (_e) {}
+    setPwdEnabled(on);
+    if (on) setTabUnlocked(true); // stay unlocked this session
+    else setTabUnlocked(false);
+  }, []);
+  var _useState191 = useState([]),
+    _useState192 = _slicedToArray(_useState191, 2),
+    unmapped = _useState192[0],
+    setUnmapped = _useState192[1];
+  var _useState193 = useState({
       pdcStatus: 'Both',
       region: [],
       branch: [],
@@ -10896,13 +11069,13 @@ function App() {
       ptype: [],
       stream: []
     }),
-    _useState186 = _slicedToArray(_useState185, 2),
-    filters = _useState186[0],
-    setFilters = _useState186[1];
-  var _useState187 = useState(false),
-    _useState188 = _slicedToArray(_useState187, 2),
-    mobileFiltersOpen = _useState188[0],
-    setMobileFiltersOpen = _useState188[1];
+    _useState194 = _slicedToArray(_useState193, 2),
+    filters = _useState194[0],
+    setFilters = _useState194[1];
+  var _useState195 = useState(false),
+    _useState196 = _slicedToArray(_useState195, 2),
+    mobileFiltersOpen = _useState196[0],
+    setMobileFiltersOpen = _useState196[1];
   var t = dark ? THEMES.dark : THEMES.light;
   useEffect(function () {
     document.body.style.background = t.bg;
@@ -10920,59 +11093,59 @@ function App() {
     } catch (_e) {}
     ;
   }, [tab]);
-  var _useState189 = useState(DEFAULT_GSHEET_URLS),
-    _useState190 = _slicedToArray(_useState189, 2),
-    gsheetUrls = _useState190[0],
-    setGsheetUrls = _useState190[1];
-  var _useState191 = useState({}),
-    _useState192 = _slicedToArray(_useState191, 2),
-    gsheetStatus = _useState192[0],
-    setGsheetStatus = _useState192[1];
+  var _useState197 = useState(DEFAULT_GSHEET_URLS),
+    _useState198 = _slicedToArray(_useState197, 2),
+    gsheetUrls = _useState198[0],
+    setGsheetUrls = _useState198[1];
+  var _useState199 = useState({}),
+    _useState200 = _slicedToArray(_useState199, 2),
+    gsheetStatus = _useState200[0],
+    setGsheetStatus = _useState200[1];
   var fetchSheetFromUrl = useCallback( /*#__PURE__*/function () {
-    var _ref81 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9(k, url) {
+    var _ref83 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10(k, url) {
       var res, text;
-      return _regeneratorRuntime().wrap(function _callee9$(_context9) {
-        while (1) switch (_context9.prev = _context9.next) {
+      return _regeneratorRuntime().wrap(function _callee10$(_context10) {
+        while (1) switch (_context10.prev = _context10.next) {
           case 0:
             if (!(!url || !url.trim())) {
-              _context9.next = 2;
+              _context10.next = 2;
               break;
             }
-            return _context9.abrupt("return", null);
+            return _context10.abrupt("return", null);
           case 2:
-            _context9.next = 4;
+            _context10.next = 4;
             return fetch(url.trim());
           case 4:
-            res = _context9.sent;
+            res = _context10.sent;
             if (res.ok) {
-              _context9.next = 7;
+              _context10.next = 7;
               break;
             }
             throw new Error("HTTP ".concat(res.status));
           case 7:
-            _context9.next = 9;
+            _context10.next = 9;
             return res.text();
           case 9:
-            text = _context9.sent;
+            text = _context10.sent;
             if (!(!text.trim() || text.trim().startsWith('<'))) {
-              _context9.next = 12;
+              _context10.next = 12;
               break;
             }
             throw new Error('Invalid response');
           case 12:
-            return _context9.abrupt("return", parseCSV(text));
+            return _context10.abrupt("return", parseCSV(text));
           case 13:
           case "end":
-            return _context9.stop();
+            return _context10.stop();
         }
-      }, _callee9);
+      }, _callee10);
     }));
     return function (_x6, _x7) {
-      return _ref81.apply(this, arguments);
+      return _ref83.apply(this, arguments);
     };
   }(), []);
   var refreshFromGSheets = useCallback( /*#__PURE__*/function () {
-    var _ref82 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10(urls) {
+    var _ref84 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee11(urls) {
       var silent,
         keys,
         active,
@@ -10986,32 +11159,32 @@ function App() {
         k,
         data,
         _ts,
-        _args10 = arguments;
-      return _regeneratorRuntime().wrap(function _callee10$(_context10) {
-        while (1) switch (_context10.prev = _context10.next) {
+        _args11 = arguments;
+      return _regeneratorRuntime().wrap(function _callee11$(_context11) {
+        while (1) switch (_context11.prev = _context11.next) {
           case 0:
-            silent = _args10.length > 1 && _args10[1] !== undefined ? _args10[1] : false;
+            silent = _args11.length > 1 && _args11[1] !== undefined ? _args11[1] : false;
             keys = ['s1', 's2', 's3', 's4', 's5'];
             active = keys.filter(function (k) {
               return urls[k] && urls[k].trim();
             });
             if (active.length) {
-              _context10.next = 5;
+              _context11.next = 5;
               break;
             }
-            return _context10.abrupt("return");
+            return _context11.abrupt("return");
           case 5:
             if (!silent) setGsheetStatus(function (p) {
               return _objectSpread(_objectSpread({}, p), Object.fromEntries(active.map(function (k) {
                 return [k, 'loading'];
               })));
             });
-            _context10.next = 8;
+            _context11.next = 8;
             return Promise.allSettled(active.map(function (k) {
               return fetchSheetFromUrl(k, urls[k]);
             }));
           case 8:
-            results = _context10.sent;
+            results = _context11.sent;
             newSheets = {};
             newMeta = {};
             newStatus = {};
@@ -11025,7 +11198,7 @@ function App() {
               }
             });
             if (!Object.keys(newSheets).length) {
-              _context10.next = 29;
+              _context11.next = 29;
               break;
             }
             setSheets(function (prev) {
@@ -11041,22 +11214,22 @@ function App() {
             _i2 = 0, _Object$entries = Object.entries(newSheets);
           case 17:
             if (!(_i2 < _Object$entries.length)) {
-              _context10.next = 29;
+              _context11.next = 29;
               break;
             }
             _Object$entries$_i = _slicedToArray(_Object$entries[_i2], 2), k = _Object$entries$_i[0], data = _Object$entries$_i[1];
-            _context10.prev = 19;
-            _context10.next = 22;
+            _context11.prev = 19;
+            _context11.next = 22;
             return dbSet(k, data);
           case 22:
-            _context10.next = 26;
+            _context11.next = 26;
             break;
           case 24:
-            _context10.prev = 24;
-            _context10.t0 = _context10["catch"](19);
+            _context11.prev = 24;
+            _context11.t0 = _context11["catch"](19);
           case 26:
             _i2++;
-            _context10.next = 17;
+            _context11.next = 17;
             break;
           case 29:
             setGsheetStatus(function (p) {
@@ -11077,12 +11250,12 @@ function App() {
             }
           case 31:
           case "end":
-            return _context10.stop();
+            return _context11.stop();
         }
-      }, _callee10, null, [[19, 24]]);
+      }, _callee11, null, [[19, 24]]);
     }));
     return function (_x8) {
-      return _ref82.apply(this, arguments);
+      return _ref84.apply(this, arguments);
     };
   }(), [fetchSheetFromUrl]);
   useEffect(function () {
@@ -11090,16 +11263,16 @@ function App() {
       return _boot.apply(this, arguments);
     }
     function _boot() {
-      _boot = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee11() {
+      _boot = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12() {
         var _yield$Promise$all, _yield$Promise$all2, s1, s2, s3, s4, s5, meta, tg, cred, urls, loaded, activeUrls;
-        return _regeneratorRuntime().wrap(function _callee11$(_context11) {
-          while (1) switch (_context11.prev = _context11.next) {
+        return _regeneratorRuntime().wrap(function _callee12$(_context12) {
+          while (1) switch (_context12.prev = _context12.next) {
             case 0:
-              _context11.prev = 0;
-              _context11.next = 3;
+              _context12.prev = 0;
+              _context12.next = 3;
               return Promise.all([dbGet('s1'), dbGet('s2'), dbGet('s3'), dbGet('s4'), dbGet('s5'), dbGet('sheetMeta'), dbGet('targets'), dbGet('credit'), dbGet('gsheet_urls')]);
             case 3:
-              _yield$Promise$all = _context11.sent;
+              _yield$Promise$all = _context12.sent;
               _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 9);
               s1 = _yield$Promise$all2[0];
               s2 = _yield$Promise$all2[1];
@@ -11134,26 +11307,26 @@ function App() {
               };
               setGsheetUrls(activeUrls);
               // Keep spinner visible until Google Sheets fetch completes — user sees data, not "Go To Settings"
-              _context11.next = 25;
+              _context12.next = 25;
               return refreshFromGSheets(activeUrls, true);
             case 25:
               setBooting(false);
-              return _context11.abrupt("return");
+              return _context12.abrupt("return");
             case 29:
-              _context11.prev = 29;
-              _context11.t0 = _context11["catch"](0);
-              console.error(_context11.t0);
+              _context12.prev = 29;
+              _context12.t0 = _context12["catch"](0);
+              console.error(_context12.t0);
             case 32:
               setHasPwd(true);
-              _context11.next = 35;
+              _context12.next = 35;
               return refreshFromGSheets(DEFAULT_GSHEET_URLS, true);
             case 35:
               setBooting(false);
             case 36:
             case "end":
-              return _context11.stop();
+              return _context12.stop();
           }
-        }, _callee11, null, [[0, 29]]);
+        }, _callee12, null, [[0, 29]]);
       }));
       return _boot.apply(this, arguments);
     }
@@ -11171,38 +11344,38 @@ function App() {
     }));
   }
   var saveTargets = useCallback( /*#__PURE__*/function () {
-    var _ref83 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12(tg) {
-      return _regeneratorRuntime().wrap(function _callee12$(_context12) {
-        while (1) switch (_context12.prev = _context12.next) {
+    var _ref85 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13(tg) {
+      return _regeneratorRuntime().wrap(function _callee13$(_context13) {
+        while (1) switch (_context13.prev = _context13.next) {
           case 0:
             setTargets(tg);
-            _context12.prev = 1;
-            _context12.next = 4;
+            _context13.prev = 1;
+            _context13.next = 4;
             return dbSet('targets', tg);
           case 4:
-            _context12.next = 8;
+            _context13.next = 8;
             break;
           case 6:
-            _context12.prev = 6;
-            _context12.t0 = _context12["catch"](1);
+            _context13.prev = 6;
+            _context13.t0 = _context13["catch"](1);
           case 8:
           case "end":
-            return _context12.stop();
+            return _context13.stop();
         }
-      }, _callee12, null, [[1, 6]]);
+      }, _callee13, null, [[1, 6]]);
     }));
     return function (_x9) {
-      return _ref83.apply(this, arguments);
+      return _ref85.apply(this, arguments);
     };
   }(), []);
   var onFileUpload = useCallback(function (k, file) {
     if (!file) return;
     var reader = new FileReader();
     reader.onload = /*#__PURE__*/function () {
-      var _ref84 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13(e) {
+      var _ref86 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(e) {
         var data, ts;
-        return _regeneratorRuntime().wrap(function _callee13$(_context13) {
-          while (1) switch (_context13.prev = _context13.next) {
+        return _regeneratorRuntime().wrap(function _callee14$(_context14) {
+          while (1) switch (_context14.prev = _context14.next) {
             case 0:
               data = parseCSV(e.target.result);
               ts = new Date().toLocaleString();
@@ -11216,32 +11389,32 @@ function App() {
                 dbSet('sheetMeta', u)["catch"](function () {});
                 return u;
               });
-              _context13.prev = 4;
-              _context13.next = 7;
+              _context14.prev = 4;
+              _context14.next = 7;
               return dbSet(k, data);
             case 7:
-              _context13.next = 12;
+              _context14.next = 12;
               break;
             case 9:
-              _context13.prev = 9;
-              _context13.t0 = _context13["catch"](4);
-              console.error(_context13.t0);
+              _context14.prev = 9;
+              _context14.t0 = _context14["catch"](4);
+              console.error(_context14.t0);
             case 12:
             case "end":
-              return _context13.stop();
+              return _context14.stop();
           }
-        }, _callee13, null, [[4, 9]]);
+        }, _callee14, null, [[4, 9]]);
       }));
       return function (_x10) {
-        return _ref84.apply(this, arguments);
+        return _ref86.apply(this, arguments);
       };
     }();
     reader.readAsText(file);
   }, []);
   var onClearSheet = useCallback( /*#__PURE__*/function () {
-    var _ref85 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(k) {
-      return _regeneratorRuntime().wrap(function _callee14$(_context14) {
-        while (1) switch (_context14.prev = _context14.next) {
+    var _ref87 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15(k) {
+      return _regeneratorRuntime().wrap(function _callee15$(_context15) {
+        while (1) switch (_context15.prev = _context15.next) {
           case 0:
             setSheets(function (prev) {
               var u = _objectSpread(_objectSpread({}, prev), {}, _defineProperty({}, k, []));
@@ -11253,23 +11426,23 @@ function App() {
               dbSet('sheetMeta', u)["catch"](function () {});
               return u;
             });
-            _context14.prev = 2;
-            _context14.next = 5;
+            _context15.prev = 2;
+            _context15.next = 5;
             return dbDel(k);
           case 5:
-            _context14.next = 9;
+            _context15.next = 9;
             break;
           case 7:
-            _context14.prev = 7;
-            _context14.t0 = _context14["catch"](2);
+            _context15.prev = 7;
+            _context15.t0 = _context15["catch"](2);
           case 9:
           case "end":
-            return _context14.stop();
+            return _context15.stop();
         }
-      }, _callee14, null, [[2, 7]]);
+      }, _callee15, null, [[2, 7]]);
     }));
     return function (_x11) {
-      return _ref85.apply(this, arguments);
+      return _ref87.apply(this, arguments);
     };
   }(), []);
   var allTx = useMemo(function () {
@@ -11407,10 +11580,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref86) {
-      var _ref87 = _slicedToArray(_ref86, 2),
-        n = _ref87[0],
-        v = _ref87[1];
+    }).map(function (_ref88) {
+      var _ref89 = _slicedToArray(_ref88, 2),
+        n = _ref89[0],
+        v = _ref89[1];
       return {
         name: n,
         value: v
@@ -11424,10 +11597,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).map(function (_ref88) {
-      var _ref89 = _slicedToArray(_ref88, 2),
-        n = _ref89[0],
-        v = _ref89[1];
+    }).map(function (_ref90) {
+      var _ref91 = _slicedToArray(_ref90, 2),
+        n = _ref91[0],
+        v = _ref91[1];
       return {
         name: n,
         value: v
@@ -11441,10 +11614,10 @@ function App() {
     });
     return Object.entries(m).sort(function (a, b) {
       return b[1] - a[1];
-    }).slice(0, 10).map(function (_ref90) {
-      var _ref91 = _slicedToArray(_ref90, 2),
-        n = _ref91[0],
-        v = _ref91[1];
+    }).slice(0, 10).map(function (_ref92) {
+      var _ref93 = _slicedToArray(_ref92, 2),
+        n = _ref93[0],
+        v = _ref93[1];
       return {
         name: n,
         value: v
@@ -11718,10 +11891,10 @@ function App() {
       flex: 1,
       overflowX: 'auto'
     }
-  }, TABS.map(function (_ref92) {
-    var _ref93 = _slicedToArray(_ref92, 2),
-      k = _ref93[0],
-      l = _ref93[1];
+  }, TABS.map(function (_ref94) {
+    var _ref95 = _slicedToArray(_ref94, 2),
+      k = _ref95[0],
+      l = _ref95[1];
     return /*#__PURE__*/React.createElement("button", {
       key: k,
       onClick: function onClick() {
@@ -11789,7 +11962,7 @@ function App() {
       padding: '5px 10px',
       fontSize: 12
     }
-  }, dark ? '☀️' : '🌙'), hasPwd && /*#__PURE__*/React.createElement(Btn, {
+  }, dark ? '☀️' : '🌙'), pwdEnabled && hasPwd && /*#__PURE__*/React.createElement(Btn, {
     t: t,
     onClick: function onClick() {
       return setTabUnlocked(false);
@@ -11853,7 +12026,7 @@ function App() {
       maxWidth: 1600,
       margin: '0 auto'
     }
-  }, tab === 'settings' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
+  }, tab === 'settings' && (!tabsOpen ? /*#__PURE__*/React.createElement(TabPasswordGate, {
     t: t,
     tabName: "\u2699 Settings",
     onUnlock: function onUnlock() {
@@ -11871,7 +12044,7 @@ function App() {
       return refreshFromGSheets(gsheetUrls);
     },
     t: t
-  })), tab === 'security' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
+  })), tab === 'security' && (!tabsOpen ? /*#__PURE__*/React.createElement(TabPasswordGate, {
     t: t,
     tabName: "\uD83D\uDD10 Security",
     onUnlock: function onUnlock() {
@@ -11884,24 +12057,26 @@ function App() {
     },
     credit: credit,
     onSaveCredit: /*#__PURE__*/function () {
-      var _ref94 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15(c) {
-        return _regeneratorRuntime().wrap(function _callee15$(_context15) {
-          while (1) switch (_context15.prev = _context15.next) {
+      var _ref96 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee16(c) {
+        return _regeneratorRuntime().wrap(function _callee16$(_context16) {
+          while (1) switch (_context16.prev = _context16.next) {
             case 0:
               setCredit(c);
-              _context15.next = 3;
+              _context16.next = 3;
               return dbSet('credit', c);
             case 3:
             case "end":
-              return _context15.stop();
+              return _context16.stop();
           }
-        }, _callee15);
+        }, _callee16);
       }));
       return function (_x12) {
-        return _ref94.apply(this, arguments);
+        return _ref96.apply(this, arguments);
       };
-    }()
-  })), tab === 'targets' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
+    }(),
+    pwdEnabled: pwdEnabled,
+    setPasswordProtection: setPasswordProtection
+  })), tab === 'targets' && (!tabsOpen ? /*#__PURE__*/React.createElement(TabPasswordGate, {
     t: t,
     tabName: "Targets",
     onUnlock: function onUnlock() {
@@ -11912,7 +12087,7 @@ function App() {
     targets: mergedTargets,
     saveTargets: saveTargets,
     t: t
-  })), tab === 'commission' && (!tabUnlocked ? /*#__PURE__*/React.createElement(TabPasswordGate, {
+  })), tab === 'commission' && (!tabsOpen ? /*#__PURE__*/React.createElement(TabPasswordGate, {
     t: t,
     tabName: "Commission",
     onUnlock: function onUnlock() {
