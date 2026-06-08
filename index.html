@@ -5369,31 +5369,33 @@ function PipelineTab(_ref49) {
       })
     };
   }, [filtered]);
-  var byMonth = useMemo(function () {
+  var byMonthResult = useMemo(function () {
     var m = {};
+    var ctSet = {};
     filtered.forEach(function (r) {
-      var k = r.Month || '?';
-      if (!m[k]) m[k] = {
-        month: k,
-        assured: 0,
-        unassured: 0
-      };
-      var a = parseAmt(r['Collection Amount']);
-      var ctM = (r['Collection Type'] || '').trim().toLowerCase();
-      if (Array.from(HIGH_CONF).some(function(v) { return v.toLowerCase() === ctM; })) m[k].assured += a;
-      if (Array.from(LOW_CONF).some(function(v) { return v.toLowerCase() === ctM; })) m[k].unassured += a;
+      var mo = r.Month || '?';
+      var ct = (r['Collection Type'] || 'Unknown').trim();
+      if (!m[mo]) m[mo] = { month: mo };
+      m[mo][ct] = (m[mo][ct] || 0) + parseAmt(r['Collection Amount']);
+      ctSet[ct] = true;
     });
     var knownOrder = MONTHS;
-    var keys = Object.keys(m);
-    var sorted = keys.slice().sort(function(a, b) {
+    var moKeys = Object.keys(m);
+    var sortedMo = moKeys.slice().sort(function(a, b) {
       var ia = knownOrder.indexOf(a), ib = knownOrder.indexOf(b);
       if (ia !== -1 && ib !== -1) return ia - ib;
       if (ia !== -1) return -1;
       if (ib !== -1) return 1;
       return a.localeCompare(b);
     });
-    return sorted.map(function(mo) { return m[mo]; });
+    var ctKeys = Object.keys(ctSet).sort();
+    var keys = ctKeys.map(function(ct, i) {
+      return { key: ct, name: ct, color: COLORS[i % COLORS.length] };
+    });
+    return { data: sortedMo.map(function(mo) { return m[mo]; }), keys: keys };
   }, [filtered]);
+  var byMonth = byMonthResult.data;
+  var byMonthKeys = byMonthResult.keys;
   var byStage = useMemo(function () {
     var m = {};
     filtered.forEach(function (r) {
@@ -5581,15 +5583,7 @@ function PipelineTab(_ref49) {
     title: "Pipeline by Month",
     chartId: "pipeline_month",
     data: byMonth,
-    keys: [{
-      key: 'assured',
-      name: 'Assured',
-      color: '#10b981'
-    }, {
-      key: 'unassured',
-      name: 'Unassured',
-      color: '#f59e0b'
-    }],
+    keys: byMonthKeys,
     nameKey: "month",
     height: 220,
     defaultType: "bar",
