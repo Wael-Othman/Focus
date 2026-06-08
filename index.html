@@ -5383,11 +5383,16 @@ function PipelineTab(_ref49) {
       if (Array.from(HIGH_CONF).some(function(v) { return v.toLowerCase() === ctM; })) m[k].assured += a;
       if (Array.from(LOW_CONF).some(function(v) { return v.toLowerCase() === ctM; })) m[k].unassured += a;
     });
-    return MONTHS.filter(function (mo) {
-      return m[mo];
-    }).map(function (mo) {
-      return m[mo];
+    var knownOrder = MONTHS;
+    var keys = Object.keys(m);
+    var sorted = keys.slice().sort(function(a, b) {
+      var ia = knownOrder.indexOf(a), ib = knownOrder.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
     });
+    return sorted.map(function(mo) { return m[mo]; });
   }, [filtered]);
   var byStage = useMemo(function () {
     var m = {};
