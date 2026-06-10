@@ -4231,6 +4231,41 @@ function CommissionTab(_ref42) {
   var ytdPct = annTarget ? pct(ns + rn, annTarget) : 0; // overall YTD
 
   // ── Commission calculation ─────────────────────────────────────────────────
+  // ── YTD figures for CAM cumulative renewals ───────────────────────────────
+  var isCAM = role.toLowerCase().includes('support incharge') || role.toLowerCase().includes('support in-charge');
+  var ytdMos = useMemo(function () {
+    var allQ = ['Q1', 'Q2', 'Q3', 'Q4'];
+    var upTo = allQ.indexOf(qtr);
+    var mos = [];
+    for (var i = 0; i <= upTo; i++) mos = mos.concat(Q_MONTHS[allQ[i]]);
+    return mos;
+  }, [qtr]);
+  var ytdRenewTgt = useMemo(function () {
+    if (!isCAM) return 0;
+    var allQ = ['Q1', 'Q2', 'Q3', 'Q4'];
+    var upTo = allQ.indexOf(qtr);
+    var total = 0;
+    for (var i = 0; i <= upTo; i++) {
+      total += parseFloat(targets['renewals_q_' + sel + '_' + year + '_' + allQ[i]] || 0);
+    }
+    return total;
+  }, [isCAM, qtr, sel, year, targets]);
+  var ytdRnRows = useMemo(function () {
+    if (!isCAM || rnOverride) return [];
+    var srcSheet = year === curYear ? sheets.s2 : [].concat(_toConsumableArray(sheets.s1), _toConsumableArray(sheets.s2));
+    return srcSheet.filter(function (r) {
+      var ry = parseYear(r.yy || r.Year || r.year);
+      return ry === year &&
+        (r.Employee && r.Employee.trim() === sel || r.Executive && r.Executive.trim() === sel) &&
+        ytdMos.includes(r.Month) &&
+        rnStreams.some(function (s) { return s.toLowerCase() === (r.Stream || r.stream || '').toLowerCase().trim(); });
+    });
+  }, [isCAM, rnOverride, qtr, sel, year, ytdMos, rnStreams, sheets.s1, sheets.s2, curYear]);
+  var ytdRn = rnOverride ? (parseFloat(rnAmt) || 0) : ytdRnRows.reduce(function (s, r) {
+    return s + parseAmt(r.Collection || r['Collection Amount'] || r.Amount || 0);
+  }, 0);
+  var ytdRnPct = ytdRenewTgt ? pct(ytdRn, ytdRenewTgt) : 0;
+
   /*COMMISSION_LOGIC_START*/
   var result = useMemo(function () {
     if (!sel) return null;
@@ -4241,27 +4276,26 @@ function CommissionTab(_ref42) {
       rb = 'Role not configured';
     if (r.includes('support incharge') || r.includes('support in-charge')) {
       /*
-       * SUPPORT INCHARGE - SALES commission (on QTD sales collections)
-       * Sales target for Q = Q total target - Q renewal target
-       * Slabs applied to (ns / qSalesTgt):
-       *   0%+  → 1%  (from first dirham)
-       *  70%+  → 3%  (over all)
-       *  80%+  → 4%  (over all)
-       * 100%+  → 5%  (over all)
+       * SUPPORT INCHARGE - SALES commission (QTD, quarterly basis)
+       * Slabs vs qSalesPct (ns / qSalesTgt):
+       *   0%+  → 1%  on all collected
+       *  70%+  → 3%  on all collected
+       *  80%+  → 4%  on all collected
+       * 100%+  → 5%  on all collected
        */
       if (qSalesTgt > 0) {
         if (qSalesPct >= 100) {
           nc = ns * 0.05;
-          nb = '≥100% of sales target → 5% on all sales collected';
+          nb = '≥100% of Q sales target → 5% on all sales collected';
         } else if (qSalesPct >= 80) {
           nc = ns * 0.04;
-          nb = '≥80% of sales target → 4% on all sales collected';
+          nb = '≥80% of Q sales target → 4% on all sales collected';
         } else if (qSalesPct >= 70) {
           nc = ns * 0.03;
-          nb = '≥70% of sales target → 3% on all sales collected';
+          nb = '≥70% of Q sales target → 3% on all sales collected';
         } else {
           nc = ns * 0.01;
-          nb = '<70% of sales target → 1% on all sales collected';
+          nb = '<70% of Q sales target → 1% on all sales collected';
         }
       } else {
         nc = ns * 0.01;
@@ -4269,54 +4303,55 @@ function CommissionTab(_ref42) {
       }
 
       /*
-       * SUPPORT INCHARGE - RENEWALS commission (on QTD renewal collections)
-       * vs (Q renewal target + any pending from previous Q)
-       * Slabs applied to (rn / qRenewTgt):
-       *  70%+  → 2.50%
-       *  80%+  → 2.75%
-       * 100%+  → 3.00%
+       * SUPPORT INCHARGE - RENEWALS commission (YTD cumulative)
+       * ytdRn = renewals collected from Q1 up to current Q
+       * ytdRenewTgt = sum of renewal targets Q1 through current Q
+       * Slabs vs ytdRnPct:
+       *  70%+  → 2.50% on ytdRn
+       *  80%+  → 2.75% on ytdRn
+       * 100%+  → 3.00% on ytdRn
        *  <70%  → 0%
        */
-      if (qRenewTgt > 0) {
-        if (rnPct >= 100) {
-          rc = rn * 0.03;
-          rb = '≥100% of renewal target → 3.00% on renewals';
-        } else if (rnPct >= 80) {
-          rc = rn * 0.0275;
-          rb = '≥80% of renewal target → 2.75% on renewals';
-        } else if (rnPct >= 70) {
-          rc = rn * 0.025;
-          rb = '≥70% of renewal target → 2.50% on renewals';
+      if (ytdRenewTgt > 0) {
+        if (ytdRnPct >= 100) {
+          rc = ytdRn * 0.03;
+          rb = '\u2265100% YTD renewal target \u2192 3.00% on YTD renewals (AED ' + fmt(ytdRn) + ')';
+        } else if (ytdRnPct >= 80) {
+          rc = ytdRn * 0.0275;
+          rb = '\u226580% YTD renewal target \u2192 2.75% on YTD renewals (AED ' + fmt(ytdRn) + ')';
+        } else if (ytdRnPct >= 70) {
+          rc = ytdRn * 0.025;
+          rb = '\u226570% YTD renewal target \u2192 2.50% on YTD renewals (AED ' + fmt(ytdRn) + ')';
         } else {
           rc = 0;
-          rb = '<70% of renewal target → 0% renewals commission';
+          rb = '<70% YTD renewal target (' + fmtP(ytdRnPct) + ') \u2192 0% renewals commission';
         }
       } else {
-        rb = 'No Q renewal target set';
+        rb = 'No YTD renewal target set';
       }
     } else if (r.includes('sales consultant') || r.includes('consultant')) {
       /*
-       * SALES CONSULTANT - SALES commission (on QTD sales collections, new logos only)
-       * Slabs vs Q target (qTotalTgt used since no renewal target for consultants):
-       *   0 → <60%   → 2%  over all
-       *  60 → <75%   → 4%  over all
-       *  75 → <100%  → 6%  over all
-       * 100%+         → 6% on target amount + 10% DIFFERENTIAL on excess above target
+       * SALES CONSULTANT - SALES commission (QTD, no renewals)
+       * Slabs vs % of Q target (qTotalTgt):
+       *   0 → <60%   → 2%  on all collected
+       *  60 → <75%   → 3%  on all collected
+       *  75 → <100%  → 5%  on all collected
+       * 100%+         → 5% on target amount + 7% DIFFERENTIAL on excess above target
        * No renewals commission.
        */
       var pctVsQ = qTotalTgt ? pct(ns, qTotalTgt) : 0;
       if (pctVsQ >= 100) {
-        nc = qTotalTgt * 0.06 + (ns - qTotalTgt) * 0.10;
-        nb = "\u2265100%: 6% on AED ".concat(fmt(qTotalTgt), " + 10% differential on AED ").concat(fmt(Math.max(0, ns - qTotalTgt)), " excess");
+        nc = qTotalTgt * 0.05 + (ns - qTotalTgt) * 0.07;
+        nb = '\u2265100%: 5% on AED ' + fmt(qTotalTgt) + ' + 7% differential on AED ' + fmt(Math.max(0, ns - qTotalTgt)) + ' excess';
       } else if (pctVsQ >= 75) {
-        nc = ns * 0.06;
-        nb = '≥75% of Q target → 6% on all collected';
+        nc = ns * 0.05;
+        nb = '\u226575% of Q target \u2192 5% on all collected';
       } else if (pctVsQ >= 60) {
-        nc = ns * 0.04;
-        nb = '≥60% of Q target → 4% on all collected';
+        nc = ns * 0.03;
+        nb = '\u226560% of Q target \u2192 3% on all collected';
       } else {
         nc = ns * 0.02;
-        nb = '<60% of Q target → 2% on all collected';
+        nb = '<60% of Q target \u2192 2% on all collected';
       }
       rc = 0;
       rb = 'No renewals commission for Sales Consultant';
@@ -4440,16 +4475,8 @@ function CommissionTab(_ref42) {
     var bonus = 0,
       bonusNote = '';
     if (prevMissed) {
-      // Penalty mode: 90% slab forfeited, 100%+ slab reduced to 25%
-      if (bonusPct >= 100) {
-        bonus = salary * 0.25;
-        bonusNote = "Penalty (missed ".concat(prevQ, " bonus): Slab 2 reduced \u2192 25% of salary = AED ").concat(fmt(bonus)).concat(spillover > 0 ? " | Includes AED ".concat(fmt(spillover), " spillover") : '');
-      } else if (bonusPct >= 90) {
-        bonus = 0;
-        bonusNote = "Penalty (missed ".concat(prevQ, " bonus): 90% slab forfeited \u2192 AED 0").concat(spillover > 0 ? " | Includes AED ".concat(fmt(spillover), " spillover") : '');
-      } else {
-        bonusNote = "Below 90% (".concat(fmtP(bonusPct), ") \u2014 no bonus").concat(spillover > 0 ? " | Includes AED ".concat(fmt(spillover), " spillover") : '');
-      }
+      // Penalty mode: prev Q slab 1 was missed → both slabs forfeited
+      bonusNote = "Penalty (missed ".concat(prevQ, " Slab 1): both bonus slabs forfeited \u2192 AED 0").concat(spillover > 0 ? " | Includes AED ".concat(fmt(spillover), " spillover") : '');
     } else {
       // Normal eligibility
       if (bonusPct >= 100) {
@@ -4487,7 +4514,7 @@ function CommissionTab(_ref42) {
       prevMissed: prevMissed,
       spillover: spillover
     };
-  }, [sel, role, ns, rn, qSalesPct, rnPct, qTotalPct, qSalesTgt, qTotalTgt, qRenewTgt, salary, qtr, targets]);
+  }, [sel, role, ns, rn, ytdRn, ytdRnPct, ytdRenewTgt, qSalesPct, rnPct, qTotalPct, qSalesTgt, qTotalTgt, qRenewTgt, salary, qtr, targets]);
   /*COMMISSION_LOGIC_END*/
 
   var debugMsg = sel && !role ? '⚠️ Employee found but Role is empty in Sheet 4' : sel && role && !['support head', 'support incharge', 'support in-charge', 'regional sales head', 'rsm', 'sales manager', 'manager', 'sales consultant', 'consultant'].some(function (r) {
@@ -5158,16 +5185,25 @@ function CommissionCodeEditor(_ref48) {
     width: '100%'
   };
   useEffect(function () {
-    // Extract current commission logic from the live page source
-    var src = (document.querySelector('script[type="text/babel"]') || {}).textContent || '';
+    // Find whichever script tag contains the commission logic markers
+    var scripts = Array.from(document.querySelectorAll('script'));
+    var src = '';
+    for (var i = 0; i < scripts.length; i++) {
+      var t = scripts[i].textContent || '';
+      if (t.indexOf('/*COMMISSION_LOGIC_START*/') > -1) { src = t; break; }
+    }
     var start = src.indexOf('/*COMMISSION_LOGIC_START*/');
     var end = src.indexOf('/*COMMISSION_LOGIC_END*/');
-    if (start > -1 && end > -1) setCode(src.slice(start + 25, end).trim());else setCode('// Could not extract — paste your commission logic here');
+    if (start > -1 && end > -1) setCode(src.slice(start + 25, end).trim());
+    else setCode('// Could not extract — paste your commission logic here');
   }, []);
   var applyCode = function applyCode() {
-    // Replace the commission logic block in the page's script tag and trigger re-save
     try {
-      var script = document.querySelector('script[type="text/babel"]');
+      var scripts = Array.from(document.querySelectorAll('script'));
+      var script = null;
+      for (var i = 0; i < scripts.length; i++) {
+        if ((scripts[i].textContent || '').indexOf('/*COMMISSION_LOGIC_START*/') > -1) { script = scripts[i]; break; }
+      }
       if (!script) {
         setMsg('❌ Could not find script tag');
         return;
