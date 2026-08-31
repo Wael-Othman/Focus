@@ -7330,7 +7330,7 @@ function OverviewTab(_ref64) {
     t = _ref64.t,
     allTx = _ref64.allTx;
   var maxC = topCustomers[0] && topCustomers[0].value || 1;
-  var maxE = leaderboard.execs[0] && leaderboard.execs[0].amount || 1;
+  var maxE = leaderboard.all[0] && leaderboard.all[0].amount || 1;
   var tt = {
     background: t.card,
     border: "1px solid ".concat(t.border),
@@ -7607,9 +7607,9 @@ function OverviewTab(_ref64) {
       t: t
     }));
   })), /*#__PURE__*/React.createElement(Card, {
-    title: "Executive Leaderboard",
+    title: "Employee Leaderboard",
     t: t
-  }, leaderboard.execs.slice(0, 10).map(function (e, i) {
+  }, leaderboard.all.slice(0, 10).map(function (e, i) {
     return /*#__PURE__*/React.createElement("div", {
       key: i,
       style: {
@@ -11698,6 +11698,9 @@ function App() {
         return b.amount - a.amount;
       }),
       mgrs: Object.values(mm).sort(function (a, b) {
+        return b.amount - a.amount;
+      }),
+      all: Object.values(Object.assign({}, em, mm)).sort(function (a, b) {
         return b.amount - a.amount;
       })
     };
